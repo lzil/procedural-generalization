@@ -14,6 +14,6 @@ pip install https://github.com/openai/baselines/archive/9ee399f5b20cd70ac0a87192
 pip install -e train-procgen
 ```
 
-now "python test.py" will run
+now "python test.py" will run.  
 some comments are inside
 
