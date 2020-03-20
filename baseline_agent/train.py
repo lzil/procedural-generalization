@@ -1,6 +1,7 @@
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
+#import json
 
 from baselines.ppo2 import ppo2
 from baselines.common.models import build_impala_cnn
@@ -18,7 +19,6 @@ import argparse
 
 import time
 now = str(int(time.time()))[5:]
-LOG_DIR = f'./logs/{now}'
 
 def main():
     num_envs = 64
@@ -31,7 +31,7 @@ def main():
     ppo_epochs = 3
     clip_range = .2
     save_interval = 20
-    timesteps_per_proc = num_envs * nsteps * 500 #should be ~15x 65536#50_000_000
+    timesteps_per_proc = num_envs * nsteps * 3000 # 65536 * 3000 <=~ 50_000_000
     use_vf_clipping = True
 
     parser = argparse.ArgumentParser(description='Process procgen training arguments.')
@@ -41,7 +41,10 @@ def main():
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--load_path', type=str, default=None)
+    parser.add_argument('--log_dir', type=str)
     args = parser.parse_args()
+    LOG_DIR = args.log_dir
+    #LOG_DIR = f'~/research/baseline_agent/logs/{args.env_name}/{args.num_levels}/{now}'
 
     test_worker_interval = args.test_worker_interval
 
@@ -90,7 +93,7 @@ def main():
         lam=lam,
         gamma=gamma,
         noptepochs=ppo_epochs,
-        log_interval=1,
+        log_interval=10,
         ent_coef=ent_coef,
         mpi_rank_weight=mpi_rank_weight,
         clip_vf=use_vf_clipping,
