@@ -19,15 +19,17 @@ class VideoRunner:
         venv = self.env_fn()
         self.obs = venv.reset()
 
-        # For n in range number of steps
+        #empty observation with the size acceptable by model
+        zeros_obs = np.zeros(model.act_model.X.get_shape().as_list())
         for i in range(self.nsteps):
             if i%100 == 0:
                 print(f'Step {i}')
-            #creating the observation batch that the model would accept by
-            #tiling the self.obs array the required number of times
-            tile_shape = (int(self.model.act_model.X.shape[0].value/len(self.obs)), 1,1,1)
-            model_obs  = np.tile(self.obs, tile_shape )
+            #adding the real environment observation
+            #to the empty observation
+            model_obs  = zeros_obs
+            model_obs[:len(self.obs)] = self.obs
 
+            #getting actions from the model
             actions, values, self.states, neglogpacs = self.model.step(model_obs)
 
             # Take actions in env
@@ -64,7 +66,7 @@ if __name__ == '__main__':
     venv = ProcgenEnv(num_envs=args.num_envs, env_name=args.env_name, num_levels=args.num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
     venv = VecExtractDictObs(venv, "rgb")
     conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
-    model = ppo2.learn(env=venv, network=conv_fn, total_timesteps=0, load_path = args.load_path, log_interval=1)
+    model = ppo2.learn(env=venv, network=conv_fn, total_timesteps=0, load_path = args.load_path)
 
     #creating the vectorized environment for video generation
     venv = ProcgenEnv(num_envs=args.num_screens, env_name=args.env_name, num_levels=args.num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
