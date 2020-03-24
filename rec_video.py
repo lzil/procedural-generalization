@@ -6,7 +6,7 @@ class VideoRunner:
     - Initialize the runner
 
     run():
-    - Make a mini batch
+    - make nsteps in the environment using model
     """
     def __init__(self, env_fn, model, nsteps):
         self.env_fn = env_fn
@@ -23,11 +23,14 @@ class VideoRunner:
         for i in range(self.nsteps):
             if i%100 == 0:
                 print(f'Step {i}')
+            #creating the observation batch that the model would accept by
+            #tiling the self.obs array the required number of times
             tile_shape = (int(self.model.act_model.X.shape[0].value/len(self.obs)), 1,1,1)
             model_obs  = np.tile(self.obs, tile_shape )
+
             actions, values, self.states, neglogpacs = self.model.step(model_obs)
 
-            # Take actions in env and look the results
+            # Take actions in env
             self.obs, rewards, self.dones, infos = venv.step(actions[:1])
 
     
@@ -57,14 +60,19 @@ if __name__ == '__main__':
     from baselines.common.vec_env import VecExtractDictObs
     from baselines.common.models import build_impala_cnn
 
+    #Initializing the model given the environment parameters and path to the saved model
     venv = ProcgenEnv(num_envs=args.num_envs, env_name=args.env_name, num_levels=args.num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
     venv = VecExtractDictObs(venv, "rgb")
     conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
     model = ppo2.learn(env=venv, network=conv_fn, total_timesteps=0, load_path = args.load_path, log_interval=1)
 
+    #creating the vectorized environment for video generation
     venv = ProcgenEnv(num_envs=args.num_screens, env_name=args.env_name, num_levels=args.num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
     venv = VecExtractDictObs(venv, "rgb")
+    #this wrapper from openai-baselines records a video
     env_fn = lambda: VecVideoRecorder(venv, "Video", record_video_trigger=lambda x: x == 1, video_length=args.video_length) 
+
+
     recorder = VideoRunner(env_fn, model, args.video_length)
     recorder.run()
 
