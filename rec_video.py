@@ -19,18 +19,13 @@ class VideoRunner:
         venv = self.env_fn()
         self.obs = venv.reset()
 
-        #empty observation with the size acceptable by model
-        zeros_obs = np.zeros(model.act_model.X.get_shape().as_list())
+
         for i in range(self.nsteps):
             if i%100 == 0:
-                print(f'Step {i}')
-            #adding the real environment observation
-            #to the empty observation
-            model_obs  = zeros_obs
-            model_obs[:len(self.obs)] = self.obs
+                print(f'Recorded {i} steps')
 
             #getting actions from the model
-            actions, values, self.states, neglogpacs = self.model.step(model_obs)
+            actions, values, self.states, neglogpacs = self.model.step(self.obs)
 
             # Take actions in env
             self.obs, rewards, self.dones, infos = venv.step(actions[:1])
@@ -47,7 +42,6 @@ if __name__ == '__main__':
     parser.add_argument('--env_name', type=str, default='coinrun')
     parser.add_argument('--distribution_mode', type=str, default='hard', choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=0)
-    parser.add_argument('--num_envs', type=int, default=64)
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--video_length', type=int, default=400, help = 'video length measured in agent steps')
     parser.add_argument('--num_screens', type=int, default=1, help = 'Number of screens in video')
@@ -63,17 +57,13 @@ if __name__ == '__main__':
     from baselines.common.models import build_impala_cnn
 
     #Initializing the model given the environment parameters and path to the saved model
-    venv = ProcgenEnv(num_envs=args.num_envs, env_name=args.env_name, num_levels=args.num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
+    venv = ProcgenEnv(num_envs=args.num_screens, env_name=args.env_name, num_levels=args.num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
     venv = VecExtractDictObs(venv, "rgb")
     conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
     model = ppo2.learn(env=venv, network=conv_fn, total_timesteps=0, load_path = args.load_path)
 
-    #creating the vectorized environment for video generation
-    venv = ProcgenEnv(num_envs=args.num_screens, env_name=args.env_name, num_levels=args.num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
-    venv = VecExtractDictObs(venv, "rgb")
     #this wrapper from openai-baselines records a video
     env_fn = lambda: VecVideoRecorder(venv, "Video", record_video_trigger=lambda x: x == 1, video_length=args.video_length) 
-
 
     recorder = VideoRunner(env_fn, model, args.video_length)
     recorder.run()
