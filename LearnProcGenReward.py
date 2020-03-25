@@ -135,7 +135,7 @@ def learn_reward(reward_network, optimizer, training_inputs, training_outputs, n
             if i % 1000 == 999:
                 #print(i)
                 print("epoch {}:{} loss {}".format(epoch,i, cum_loss))
-                print(f'absolute rewards = {abs_rewards.data[0]}')
+                print(f'absolute rewards = {abs_rewards.item()}')
                 cum_loss = 0.0
                 print("check pointing")
                 torch.save(reward_net.state_dict(), checkpoint_dir)
