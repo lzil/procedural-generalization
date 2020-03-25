@@ -64,10 +64,16 @@ class ProcGenRunner:
             mb_obs, mb_rewards, mb_dones, mb_actions, mb_values, mb_neglogpacs, mb_states, epinfos = self.run()
             for i in range(mb_obs.shape[1]):
                 episode = dict()
-                episode['observations'] = np.swapaxes(mb_obs,0,1)[i]
-                episode['rewards'] = np.swapaxes(mb_rewards,0,1)[i]
-                episode['actions'] = np.swapaxes(mb_actions,0,1)[i]
-                episode['dones'] = np.swapaxes(mb_dones,0,1)[i]
+                ep_dones = np.swapaxes(mb_dones,0,1)[i]
+                if np.sum(ep_dones) > 0:
+                    ep_len = np.where(ep_dones)[0][0]
+                else:
+                    ep_len = self.nsteps
+                episode['observations'] = np.swapaxes(mb_obs,0,1)[i][:ep_len]
+                episode['rewards'] = np.swapaxes(mb_rewards,0,1)[i][:ep_len]
+                episode['actions'] = np.swapaxes(mb_actions,0,1)[i][:ep_len]
+                episode['length'] = ep_len
+                episode['return'] = np.sum(episode['rewards'])
                 batch.append(episode)
 
         return np.asarray(batch[:n_episodes])
