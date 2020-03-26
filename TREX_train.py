@@ -23,10 +23,10 @@ tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
-LOG_DIR = 'Logs'
 
 
-num_envs = 64
+
+num_envs = 2*64
 learning_rate = 5e-4
 ent_coef = .01
 gamma = .999
@@ -35,7 +35,7 @@ nsteps = 256
 nminibatches = 8
 ppo_epochs = 3
 clip_range = .2
-timesteps_per_proc =  2e6
+timesteps_per_proc =  50_000_000
 use_vf_clipping = True
 
 parser = argparse.ArgumentParser(description='Process procgen training arguments.')
@@ -46,7 +46,7 @@ parser.add_argument('--start_level', type=int, default=0)
 parser.add_argument('--test_worker_interval', type=int, default=0)
 parser.add_argument('--reward_model_path', default='reward_model', help="name and location for learned model params, e.g. ./learned_models/breakout.params")
 
-
+LOG_DIR = 'TREX_LOG_' +str(env_name) + '_numlvl=' + str(num_levels)
 args = parser.parse_args()
 
 test_worker_interval = args.test_worker_interval
@@ -121,3 +121,9 @@ model = ppo2.learn(
     vf_coef=0.5,
     max_grad_norm=0.5,
 )
+
+model.save(LOG_DIR+'/final_model')
+
+
+
+
