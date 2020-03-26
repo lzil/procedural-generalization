@@ -46,9 +46,10 @@ parser.add_argument('--start_level', type=int, default=0)
 parser.add_argument('--test_worker_interval', type=int, default=0)
 parser.add_argument('--reward_model_path', default='reward_model', help="name and location for learned model params, e.g. ./learned_models/breakout.params")
 
-LOG_DIR = 'TREX_LOG_' + str(args.env_name) + '_numlvl=' + str(args.num_levels)
+
 args = parser.parse_args()
 
+LOG_DIR = 'TREX_LOG_' + str(args.env_name) + '_numlvl=' + str(args.num_levels)
 test_worker_interval = args.test_worker_interval
 
 comm = MPI.COMM_WORLD
