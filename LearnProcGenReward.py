@@ -90,6 +90,18 @@ class Net(nn.Module):
         sum_abs_rewards += torch.sum(torch.abs(r))
         return sum_rewards, sum_abs_rewards
 
+    def predict_rewards(self, batch_obs):
+        with torch.no_grad():
+            x = torch.tensor(batch_obs, dtype=torch.float32).permute(0,3,1,2) #get into NCHW format
+            #compute forward pass of reward network (we parallelize across frames so batch size is length of partial trajectory)
+            x = F.leaky_relu(self.conv1(x))
+            x = F.leaky_relu(self.conv2(x))
+            x = F.leaky_relu(self.conv3(x))
+            x = F.leaky_relu(self.conv4(x))
+            x = x.view(-1, 16*16)
+            x = F.leaky_relu(self.fc1(x))
+            r = self.fc2(x)
+            return r.numpy().flatten()
 
     def forward(self, traj_i, traj_j):
         '''compute cumulative return for each trajectory and return logits'''
@@ -164,8 +176,6 @@ def calc_accuracy(reward_network, training_inputs, training_outputs):
             if pred_label.item() == label:
                 num_correct += 1.
     return num_correct / len(training_inputs)
-
-
 
 
 
