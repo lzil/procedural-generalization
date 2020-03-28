@@ -78,7 +78,7 @@ venv = VecMonitor(
 import LearnProcGenReward
 from ProxyRewardWrapper import PredictRewardWrapper
 
-reward_net = LearnProcGenReward.Net()
+reward_net = LearnProcGenReward.RewardNet()
 reward_net.load_state_dict(torch.load(args.reward_model_path, map_location=torch.device('cpu')))
 
 rew_func = lambda x: reward_net.predict_rewards(x)

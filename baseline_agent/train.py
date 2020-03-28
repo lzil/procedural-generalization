@@ -128,6 +128,9 @@ def main():
 
     venv = VecNormalize(venv=venv, ob=False)
 
+
+    #ppo learns venv: procgenenv -> vecextractdictobs -> vecmonitor -> vecnormalize
+
     logger.info("creating tf session")
     setup_mpi_gpus()
     config = tf.ConfigProto()

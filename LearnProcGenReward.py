@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 def procgen_generate_demos(env_fn, model_dir, model, eps_per_model):
 
@@ -20,35 +19,44 @@ def procgen_generate_demos(env_fn, model_dir, model, eps_per_model):
     return demonstrations, learning_returns, learning_rewards
 
 
+# TODO: could use a DataLoader for this entire process??
 def create_training_data(demonstrations, num_snippets, min_snippet_length, max_snippet_length):
     #collect training data
     #demonstrations should be sorted by increasing returns
-    max_traj_length = 0
+    max_traj_len = 0
     training_obs = []
     training_labels = []
-    num_demos = len(demonstrations)
-    print(f'min demo length = {min([len(t) for t in demonstrations])}, \
-    max demo length = {max([len(t) for t in demonstrations])}')
+
+    n_demos = len(demonstrations)
+    demo_lens = [len(t) for t in demonstrations]
+    print(f'demo length: min = {min(demo_lens)}, max = {max(demo_lens)}')
     #fixed size snippets with progress prior
     for n in range(num_snippets):
         ti = 0
         tj = 0
         #only add trajectories that are different returns, ti < tj
-        ti , tj = np.sort(np.random.choice(num_demos, 2, replace = False))
+        ti, tj = np.sort(np.random.choice(n_demos, 2, replace = False))
         
         #create random snippets
         #find min length of both demos to ensure we can pick a demo no earlier than that chosen in worse preferred demo
-        min_length = min(len(demonstrations[ti]), len(demonstrations[tj]))
-        this_max_snippet_length = min(min_length, max_snippet_length)
-        rand_length = np.random.randint(min_snippet_length, this_max_snippet_length)
+        cur_min_len = min(len(demonstrations[ti]), len(demonstrations[tj]))
+        cur_max_snippet_len = min(cur_min_len, max_snippet_length)
+        cur_len = np.random.randint(min_snippet_length, cur_max_snippet_len)
+
         #pick tj snippet to be later than ti
-        ti_start = np.random.randint(min_length - rand_length + 1)
-        tj_start = np.random.randint(ti_start, len(demonstrations[tj]) - rand_length + 1)
+        # TODO: why?? is it so that tj will be more representative of a successful trajectory?
+        ti_start = np.random.randint(cur_min_len - cur_len + 1)
+        tj_start = np.random.randint(ti_start, len(demonstrations[tj]) - cur_len + 1)
 
-        traj_i = demonstrations[ti][ti_start:ti_start+rand_length] #skip everyother framestack to reduce size
-        traj_j = demonstrations[tj][tj_start:tj_start+rand_length]
+        # TODO: not sure what the comment in the below line means
+        traj_i = demonstrations[ti][ti_start:ti_start+cur_len] #skip everyother framestack to reduce size
+        traj_j = demonstrations[tj][tj_start:tj_start+cur_len]
 
-        max_traj_length = max(max_traj_length, len(traj_i), len(traj_j))
+        # TODO: traj_i and traj_j should have the same lengths, right?
+        max_traj_len = max(max_traj_len, len(traj_i), len(traj_j))
+
+
+        # TODO: why is this label random???? is this why tj snippet needs to be later than ti? still don't understand
         #randomize label
         label = np.random.randint(2)
         if label:
@@ -57,64 +65,55 @@ def create_training_data(demonstrations, num_snippets, min_snippet_length, max_s
             training_obs.append((traj_j, traj_i))
         training_labels.append(label)
 
-    print("maximum traj length", max_traj_length)
+    print(f"max traj length: {max_traj_len}")
     return training_obs, training_labels
 
-class Net(nn.Module):
+
+class RewardNet(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.conv1 = nn.Conv2d(3, 16, 7, stride=3)
-        self.conv2 = nn.Conv2d(16, 16, 5, stride=2)
-        self.conv3 = nn.Conv2d(16, 16, 3, stride=1)
-        self.conv4 = nn.Conv2d(16, 16, 3, stride=1)
-        self.fc1 = nn.Linear(16*16, 64)
-        self.fc2 = nn.Linear(64, 1)
-
         self.net = nn.Sequential(
             nn.Conv2d(3, 16, 7, stride=3),
+            nn.LeakyReLU(),
             nn.Conv2d(16, 16, 5, stride=2),
+            nn.LeakyReLU(),
             nn.Conv2d(16, 16, 3, stride=1),
+            nn.LeakyReLU(),
             nn.Conv2d(16, 16, 3, stride=1),
-            )
-
-
+            nn.LeakyReLU(),
+            nn.Flatten(),
+            nn.Linear(16*16, 64),
+            nn.LeakyReLU(),
+            nn.Linear(64, 1)
+        )
 
     def cum_return(self, traj):
+        # TODO: why not just use predict_rewards, and then return the sum and absolute value sum of that?
         '''calculate cumulative return of trajectory'''
-        sum_rewards = 0
-        sum_abs_rewards = 0
         x = traj.permute(0,3,1,2) #get into NCHW format
         #compute forward pass of reward network (we parallelize across frames so batch size is length of partial trajectory)
-        x = F.leaky_relu(self.conv1(x))
-        x = F.leaky_relu(self.conv2(x))
-        x = F.leaky_relu(self.conv3(x))
-        x = F.leaky_relu(self.conv4(x))
-        x = x.view(-1, 16*16)
-        x = F.leaky_relu(self.fc1(x))
-        r = self.fc2(x)
-        sum_rewards += torch.sum(r)
-        sum_abs_rewards += torch.sum(torch.abs(r))
+        with torch.no_grad():
+            r = self.net(x)
+        sum_rewards = torch.sum(r)
+        sum_abs_rewards = torch.sum(torch.abs(r))
         return sum_rewards, sum_abs_rewards
 
     def predict_rewards(self, batch_obs):
         with torch.no_grad():
             x = torch.tensor(batch_obs, dtype=torch.float32).permute(0,3,1,2) #get into NCHW format
             #compute forward pass of reward network (we parallelize across frames so batch size is length of partial trajectory)
-            x = F.leaky_relu(self.conv1(x))
-            x = F.leaky_relu(self.conv2(x))
-            x = F.leaky_relu(self.conv3(x))
-            x = F.leaky_relu(self.conv4(x))
-            x = x.view(-1, 16*16)
-            x = F.leaky_relu(self.fc1(x))
-            r = self.fc2(x)
+            r = self.net(x)
             return r.numpy().flatten()
 
     def forward(self, traj_i, traj_j):
         '''compute cumulative return for each trajectory and return logits'''
         cum_r_i, abs_r_i = self.cum_return(traj_i)
         cum_r_j, abs_r_j = self.cum_return(traj_j)
+        # TODO: could you use torch.stack here instead of cat?
         return torch.cat((cum_r_i.unsqueeze(0), cum_r_j.unsqueeze(0)),0), abs_r_i + abs_r_j
+
+
 
 # Train the network
 def learn_reward(reward_network, optimizer, training_inputs, training_outputs, num_iter, l1_reg, checkpoint_dir):
@@ -127,6 +126,7 @@ def learn_reward(reward_network, optimizer, training_inputs, training_outputs, n
     cum_loss = 0.0
     training_data = list(zip(training_inputs, training_outputs))
     for epoch in range(num_iter):
+        # TODO: could probably use a DataLoader for all of this??
         np.random.shuffle(training_data)
         training_obs, training_labels = zip(*training_data)
         for i in range(len(training_labels)):
@@ -144,6 +144,7 @@ def learn_reward(reward_network, optimizer, training_inputs, training_outputs, n
             #forward + backward + optimize
             outputs, abs_rewards = reward_network.forward(traj_i, traj_j)
             outputs = outputs.unsqueeze(0)
+            # TODO: consider l2 regularization? why just l1
             loss = loss_criterion(outputs, labels) + l1_reg * abs_rewards
             loss.backward()
             optimizer.step()
@@ -153,7 +154,7 @@ def learn_reward(reward_network, optimizer, training_inputs, training_outputs, n
             cum_loss += item_loss
             if i % 1000 == 999:
                 #print(i)
-                print("epoch {}:{} loss {}".format(epoch,i, cum_loss))
+                print("epoch {}, step {}: loss {}".format(epoch,i, cum_loss))
                 print(f'absolute rewards = {abs_rewards.item()}')
                 cum_loss = 0.0
                 print("check pointing")
@@ -169,7 +170,9 @@ def calc_accuracy(reward_network, training_inputs, training_outputs):
     loss_criterion = nn.CrossEntropyLoss()
     num_correct = 0.
     with torch.no_grad():
+        # TODO: again, should be able to use a DataLoader instead of going through all this computation?
         for i in range(len(training_inputs)):
+            # again, could just use a DataLoader
             label = training_outputs[i]
             traj_i, traj_j = training_inputs[i]
             traj_i = np.array(traj_i)
@@ -186,7 +189,7 @@ def calc_accuracy(reward_network, training_inputs, training_outputs):
 
 
 
-
+# purpose of these two functions is to get predicted return (via reward net) from the trajectory given as input
 def predict_reward_sequence(net, traj):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     rewards_from_obs = []
@@ -243,6 +246,7 @@ if __name__=="__main__":
 
     print("Training reward for", args.env_name)
     num_snippets = args.num_snippets
+    # TODO: why 20?
     min_snippet_length = 20 #min length of trajectory for training comparison
     max_snippet_length = 100
 
@@ -255,13 +259,16 @@ if __name__=="__main__":
     venv = ProcgenEnv(num_envs=args.num_envs, env_name=args.env_name, num_levels=args.num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
     venv = VecExtractDictObs(venv, "rgb")
     conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
+    # TODO: what is the network actually learning here? not sure what's going on in this whole block
     model = ppo2.learn(env=venv, network=conv_fn, total_timesteps=0)
 
     env_fn = lambda: VecExtractDictObs(ProcgenEnv(num_envs=args.num_envs, env_name=args.env_name, num_levels=args.num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode),"rgb")
 
     #creates collector that would sample from env with model
+    # TODO: are you using the collector here? or just in procgen_generate_demos?
     collector = ProcGenRunner(env_fn, model, 256)
 
+    # TODO: why is args.num_envs used for eps_per_model
     demonstrations, learning_returns, learning_rewards = procgen_generate_demos(env_fn, args.models_dir, model, args.num_envs)  
     #sort the demonstrations according to ground truth reward to simulate ranked demos
 
@@ -282,7 +289,7 @@ if __name__=="__main__":
    
     # Now we create a reward network and optimize it using the training data.
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    reward_net = Net()
+    reward_net = RewardNet()
     reward_net.to(device)
     import torch.optim as optim
     optimizer = optim.Adam(reward_net.parameters(),  lr=lr, weight_decay=weight_decay)
