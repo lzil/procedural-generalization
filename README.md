@@ -3,6 +3,7 @@
 testing the generalization properties of the openai procgen benchmark
 
 
+## setup
 
 setup train-procgen environments using lines below
 
@@ -14,6 +15,48 @@ pip install https://github.com/openai/baselines/archive/9ee399f5b20cd70ac0a87192
 pip install -e train-procgen
 ```
 
-now "python test.py" will run.  
-some comments are inside
 
+---
+
+## training a baseline agent
+
+Simply run `train.py` in `baseline_agent/` with appropriate parameters.
+
+Parameters can be entered with a config file with a `-c` flag.
+Example config files in `baseline_agent/configs/`.
+
+The default parameters are a good place to start; check out the `train-procgen` repo for more details.
+
+Sample run:
+`python train.py -c test.yaml`
+
+
+---
+
+## training with t-rex
+
+T-REX consists of 4 main steps.
+
+1. train an agent with PPO to do well on an environment, in general.
+    - any existing PPO trainer will do, for instance the one in `test.py` or the one in `baseline_agent/train.py`.
+    - save checkpoints of these models into some directory. example: `chaser_model_dir`
+2. sample trajectories from those trained models, from a minimal number of levels, and sort according to rewards obtained
+    - done in `trex/reward_model.py`
+    - demonstrations/trajectories generated in `generate_procgen_demonstrations`
+3. use those trajectories to train a reward model
+    - done in `trex/reward_model.py`
+    - first create the training data `create_training_data`, then train a `RewardNet` with a `RewardTrainer`
+4. train another agent with that reward model
+    - done in `trex/train_policy.py`
+    - load the reward model saved from step 3 to train an actual policy
+
+
+TODO: sample runs, config files
+
+
+
+---
+
+## recording and watching videos of saved models
+
+TODO

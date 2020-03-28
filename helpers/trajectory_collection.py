@@ -2,7 +2,7 @@ import numpy as np
 import random
 
 
-class ProcGenRunner:
+class ProcgenRunner:
     """
     We use this object to make a mini batch of experiences
     __init__:
@@ -16,6 +16,9 @@ class ProcGenRunner:
         self.model = model
         self.states = model.initial_state
         self.nsteps = nsteps
+
+    def hello(self):
+        venv = self.env
         
 
     def run(self):

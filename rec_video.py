@@ -1,4 +1,16 @@
 import numpy as np
+import os
+import tensorflow as tf
+
+import argparse
+
+from baselines.ppo2 import ppo2
+from procgen import ProcgenEnv
+from baselines.common.vec_env.vec_video_recorder import VecVideoRecorder
+from baselines.common.vec_env import VecExtractDictObs
+from baselines.common.models import build_impala_cnn
+
+
 class VideoRunner:
     """
     We use this object to make a mini batch of experiences
@@ -32,12 +44,11 @@ class VideoRunner:
 
     
 if __name__ == '__main__':
-    import os
-    import tensorflow as tf
+    
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-    import argparse
+    
     parser = argparse.ArgumentParser(description='Default arguments to initialize and load the model and env')
     parser.add_argument('--env_name', type=str, default='coinrun')
     parser.add_argument('--distribution_mode', type=str, default='hard', choices=["easy", "hard", "exploration", "memory", "extreme"])
@@ -50,11 +61,6 @@ if __name__ == '__main__':
 
     args, unknown = parser.parse_known_args()
 
-    from baselines.ppo2 import ppo2
-    from procgen import ProcgenEnv
-    from baselines.common.vec_env.vec_video_recorder import VecVideoRecorder
-    from baselines.common.vec_env import VecExtractDictObs
-    from baselines.common.models import build_impala_cnn
 
     #Initializing the model given the environment parameters and path to the saved model
     venv = ProcgenEnv(num_envs=args.num_screens, env_name=args.env_name, num_levels=args.num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)

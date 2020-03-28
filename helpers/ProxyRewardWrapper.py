@@ -2,7 +2,7 @@ from baselines.common.vec_env import VecEnvWrapper
 
 
 
-class PredictRewardWrapper(VecEnvWrapper):
+class ProxyRewardWrapper(VecEnvWrapper):
     """
     This wrapper changes the reward of the provided environment to some function
     of it's observations

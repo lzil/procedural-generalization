@@ -1,3 +1,7 @@
+import tensorflow as tf
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from baselines.ppo2 import ppo2
 from baselines.common.models import build_impala_cnn
 from baselines.common.mpi_util import setup_mpi_gpus
@@ -5,29 +9,20 @@ from procgen import ProcgenEnv
 from baselines.common.vec_env import (
     VecExtractDictObs,
     VecMonitor,
-    VecFrameStack,
     VecNormalize
 )
 from baselines import logger
 from mpi4py import MPI
 import argparse
 
-# custom imports to make documenting easier
-import yaml
-import json
-import logging
-import time
+import reward_model
 
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-import tensorflow as tf
-
+from ..helpers.ProxyRewardWrapper import PredictRewardWrapper
 from ..helpers.utils import add_yaml_args, log_this
 
 
-# figure out the right configuration for the run
 def parse_config():
-    parser = argparse.ArgumentParser(description='Process procgen training arguments.')
+    parser = argparse.ArgumentParser(description='Procgen training, with a revised reward model')
     parser.add_argument('-c', '--config', type=str, default=None)
 
     parser.add_argument('--env_name', type=str, default='coinrun')
@@ -51,10 +46,11 @@ def parse_config():
     parser.add_argument('--nminibatches', type=int, default=8)
     parser.add_argument('--ppo_epochs', type=int, default=3)
     parser.add_argument('--clip_range', type=float, default=.2)
-    # this should be num_envs * nsteps
+    # this should be num_envs * nsteps * whatever
     # 65536 * 3000 <=~ 50_000_000
     parser.add_argument('--timesteps_per_proc', type=int, default=50_000_000) 
     parser.add_argument('--use_vf_clipping', action='store_true', default=True)
+
 
     args = parser.parse_args()
 
@@ -63,15 +59,14 @@ def parse_config():
 
     return args
 
+
 def main():
 
     args = parse_config()
 
-    # to log the results consistently
-    LOG_DIR = os.path.join(args.log_dir, str(args.num_levels), args.env_name)
+    LOG_DIR = 'TREX_LOG_' + str(args.env_name) + '_numlvl=' + str(args.num_levels)
     run_dir, run_id = log_this(args, LOG_DIR, args.log_name)
 
-    # mpi work
     test_worker_interval = args.test_worker_interval
 
     comm = MPI.COMM_WORLD
@@ -90,35 +85,40 @@ def main():
     logger.configure(dir=LOG_DIR, format_strs=format_strs)
 
     logger.info("creating environment")
+
     venv = ProcgenEnv(
-        num_envs=args.num_envs,
+        num_envs=num_envs,
         env_name=args.env_name,
-        num_levels=args.num_levels,
+        num_levels=num_levels,
         start_level=args.start_level,
         distribution_mode=args.distribution_mode
     )
     venv = VecExtractDictObs(venv, "rgb")
+    venv = VecMonitor(venv=venv, filename=None, keep_buf=100)
 
-    venv = VecMonitor(
-        venv=venv, filename=None, keep_buf=100,
-    )
+    # load pretrained network
+    net = reward_model.RewardNet()
+    net.load_state_dict(torch.load(args.reward_model_path, map_location=torch.device('cpu')))
 
-    venv = VecNormalize(venv=venv, ob=False)
+    # use batch reward prediction function instead of the ground truth reward function
+    rew_func = lambda x: net.predict_batch_rewards(x)
+    venv = PredictRewardWrapper(venv, rew_func)
+    venv = VecNormalize(venv=venv, ob=False, use_tf=False)
 
-
-    #ppo learns venv: procgenenv -> vecextractdictobs -> vecmonitor -> vecnormalize
-
+    # do the rest of the training as normal
     logger.info("creating tf session")
     setup_mpi_gpus()
     config = tf.ConfigProto()
+
     config.gpu_options.allow_growth = True #pylint: disable=E1101
     sess = tf.Session(config=config)
+
     sess.__enter__()
 
     conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
 
     logger.info("training")
-    ppo2.learn(
+    model = ppo2.learn(
         env=venv,
         network=conv_fn,
         total_timesteps=args.timesteps_per_proc,
@@ -139,8 +139,12 @@ def main():
         init_fn=None,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        load_path=args.load_path
     )
+
+    model.save(LOG_DIR+'/final_model')
+
+
 
 if __name__ == '__main__':
     main()
+
