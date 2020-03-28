@@ -71,6 +71,13 @@ class Net(nn.Module):
         self.fc1 = nn.Linear(16*16, 64)
         self.fc2 = nn.Linear(64, 1)
 
+        self.net = nn.Sequential(
+            nn.Conv2d(3, 16, 7, stride=3),
+            nn.Conv2d(16, 16, 5, stride=2),
+            nn.Conv2d(16, 16, 3, stride=1),
+            nn.Conv2d(16, 16, 3, stride=1),
+            )
+
 
 
     def cum_return(self, traj):

@@ -1,4 +1,6 @@
 playground/
 logs/
+__pycache__/
 
 *slurm*
+

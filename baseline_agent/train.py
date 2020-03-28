@@ -1,8 +1,3 @@
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-import tensorflow as tf
-#import json
-
 from baselines.ppo2 import ppo2
 from baselines.common.models import build_impala_cnn
 from baselines.common.mpi_util import setup_mpi_gpus
@@ -17,35 +12,89 @@ from baselines import logger
 from mpi4py import MPI
 import argparse
 
+# custom imports to make documenting easier
+import yaml
+import json
+import logging
 import time
-now = str(int(time.time()))[5:]
 
-def main():
-    num_envs = 64
-    learning_rate = 5e-4
-    ent_coef = .01
-    gamma = .999
-    lam = .95
-    nsteps = 256
-    nminibatches = 8
-    ppo_epochs = 3
-    clip_range = .2
-    save_interval = 20
-    timesteps_per_proc = num_envs * nsteps * 3000 # 65536 * 3000 <=~ 50_000_000
-    use_vf_clipping = True
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+import tensorflow as tf
+logging.basicConfig(level=logging.INFO)
 
+# use yaml config files; note what is actually set via the config file
+def add_yaml_args(args, config_file):
+    if config_file:
+        config = yaml.safe_load(open(config_file))
+        dic = vars(args)
+        # all(map(dic.pop, config))
+        for c, v in config.items():
+            dic[c] = v
+            if c in dic.keys():
+                logging.info(f'{c} is set via config: {v}')
+            else:
+                logging.warning(f'{c} is not set to begin with: {v}')
+    return args
+
+# figure out the right configuration for the run
+def parse_config():
     parser = argparse.ArgumentParser(description='Process procgen training arguments.')
+    parser.add_argument('-c', '--config', type=str, default=None)
+
     parser.add_argument('--env_name', type=str, default='coinrun')
     parser.add_argument('--distribution_mode', type=str, default='hard', choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=0)
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--load_path', type=str, default=None)
-    parser.add_argument('--log_dir', type=str)
-    args = parser.parse_args()
-    LOG_DIR = args.log_dir
-    #LOG_DIR = f'~/research/baseline_agent/logs/{args.env_name}/{args.num_levels}/{now}'
+    parser.add_argument('--log_dir', type=str, default='logs')
+    parser.add_argument('--log_name', type=str, default='')
+    # logs every num_envs * nsteps
+    parser.add_argument('--log_interval', type=int, default=20)
+    parser.add_argument('--save_interval', type=int, default=20)
 
+    parser.add_argument('--num_envs', type=int, default=64)
+    parser.add_argument('--learning_rate', type=float, default=5e-4)
+    parser.add_argument('--ent_coef', type=float, default=.01)
+    parser.add_argument('--gamma', type=float, default=.999)
+    parser.add_argument('--lam', type=float, default=.95)
+    parser.add_argument('--nsteps', type=int, default=256)
+    parser.add_argument('--nminibatches', type=int, default=8)
+    parser.add_argument('--ppo_epochs', type=int, default=3)
+    parser.add_argument('--clip_range', type=float, default=.2)
+    # this should be num_envs * nsteps
+    # 65536 * 3000 <=~ 50_000_000
+    parser.add_argument('--timesteps_per_proc', type=int, default=50_000_000) 
+    parser.add_argument('--use_vf_clipping', action='store_true', default=True)
+
+
+    args = parser.parse_args()
+
+    if args.config is not None:
+        args = add_yaml_args(args, args.config)
+
+    return args
+
+def main():
+
+    args = parse_config()
+
+    # to log the results consistently
+    run_id = str(int(time.time()))[4:]
+    print(f'Run id: {run_id}')
+
+    if args.log_name is None:
+        args.log_name = run_id
+    LOG_DIR = os.path.join(args.log_dir, str(args.num_levels), args.env_name, args.log_name)
+    os.makedirs(LOG_DIR)
+    # might want to send stdout here later too
+    path_config = os.path.join(LOG_DIR, f'config_{run_id}.json')
+    with open(path_config, 'w', encoding='utf-8') as f:
+        json.dump(vars(args), f, indent=4)
+        print(f'Config file saved to: {path_config}')
+
+    # mpi work
     test_worker_interval = args.test_worker_interval
 
     comm = MPI.COMM_WORLD
@@ -64,7 +113,13 @@ def main():
     logger.configure(dir=LOG_DIR, format_strs=format_strs)
 
     logger.info("creating environment")
-    venv = ProcgenEnv(num_envs=num_envs, env_name=args.env_name, num_levels=num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
+    venv = ProcgenEnv(
+        num_envs=args.num_envs,
+        env_name=args.env_name,
+        num_levels=args.num_levels,
+        start_level=args.start_level,
+        distribution_mode=args.distribution_mode
+    )
     venv = VecExtractDictObs(venv, "rgb")
 
     venv = VecMonitor(
@@ -86,20 +141,20 @@ def main():
     ppo2.learn(
         env=venv,
         network=conv_fn,
-        total_timesteps=timesteps_per_proc,
-        save_interval=save_interval,
-        nsteps=nsteps,
-        nminibatches=nminibatches,
-        lam=lam,
-        gamma=gamma,
-        noptepochs=ppo_epochs,
-        log_interval=10,
-        ent_coef=ent_coef,
+        total_timesteps=args.timesteps_per_proc,
+        save_interval=args.save_interval,
+        nsteps=args.nsteps,
+        nminibatches=args.nminibatches,
+        lam=args.lam,
+        gamma=args.gamma,
+        noptepochs=args.ppo_epochs,
+        log_interval=args.log_interval,
+        ent_coef=args.ent_coef,
         mpi_rank_weight=mpi_rank_weight,
-        clip_vf=use_vf_clipping,
+        clip_vf=args.use_vf_clipping,
         comm=comm,
-        lr=learning_rate,
-        cliprange=clip_range,
+        lr=args.learning_rate,
+        cliprange=args.clip_range,
         update_fn=None,
         init_fn=None,
         vf_coef=0.5,
