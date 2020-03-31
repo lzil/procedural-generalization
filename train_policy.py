@@ -17,7 +17,7 @@ import argparse
 
 import reward_model
 
-from helpers.ProxyRewardWrapper import PredictRewardWrapper
+from helpers.ProxyRewardWrapper import ProxyRewardWrapper
 from helpers.utils import add_yaml_args, log_this
 
 
@@ -25,7 +25,7 @@ def parse_config():
     parser = argparse.ArgumentParser(description='Procgen training, with a revised reward model')
     parser.add_argument('-c', '--config', type=str, default=None)
 
-    parser.add_argument('--env_name', type=str, default='coinrun')
+    parser.add_argument('--env_name', type=str, default='chaser')
     parser.add_argument('--distribution_mode', type=str, default='hard', choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=0)
     parser.add_argument('--start_level', type=int, default=0)
@@ -33,6 +33,8 @@ def parse_config():
     parser.add_argument('--load_path', type=str, default=None)
     parser.add_argument('--log_dir', type=str, default='logs')
     parser.add_argument('--log_name', type=str, default='')
+    parser.add_argument('--reward_model_path', default='trex/reward_model_chaser', help="name and location for learned model params, e.g. ./learned_models/breakout.params")
+
     # logs every num_envs * nsteps
     parser.add_argument('--log_interval', type=int, default=20)
     parser.add_argument('--save_interval', type=int, default=20)
@@ -63,7 +65,8 @@ def parse_config():
 def main():
 
     args = parse_config()
-
+    # TODO: make the progress.csv created by logger write into separate place for each
+    # experiment, instead of overwriting itself. Or remake logging altogether.
     LOG_DIR = 'trex/LOGS/TREX_LOG_' + str(args.env_name) + '_numlvl=' + str(args.num_levels)
     run_dir, run_id = log_this(args, LOG_DIR, args.log_name)
 
@@ -87,9 +90,9 @@ def main():
     logger.info("creating environment")
 
     venv = ProcgenEnv(
-        num_envs=num_envs,
+        num_envs=args.num_envs,
         env_name=args.env_name,
-        num_levels=num_levels,
+        num_levels=args.num_levels,
         start_level=args.start_level,
         distribution_mode=args.distribution_mode
     )
@@ -102,7 +105,7 @@ def main():
 
     # use batch reward prediction function instead of the ground truth reward function
     rew_func = lambda x: net.predict_batch_rewards(x)
-    venv = PredictRewardWrapper(venv, rew_func)
+    venv = ProxyRewardWrapper(venv, rew_func)
     venv = VecNormalize(venv=venv, ob=False, use_tf=False)
 
     # do the rest of the training as normal
