@@ -1,6 +1,7 @@
 playground/
 logs/
 __pycache__/
+Video
 
 .DS_Store
 
