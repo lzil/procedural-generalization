@@ -217,7 +217,7 @@ class RewardTrainer:
         return rewards_from_obs
 
     def predict_traj_return(self, traj):
-        return sum(self.predict_reward_sequence(self.net, traj))
+        return sum(self.predict_reward_sequence(traj))
 
 def parse_config():
     parser = argparse.ArgumentParser(description='Default arguments to initialize and load the model and env')
