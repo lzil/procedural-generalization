@@ -212,7 +212,7 @@ class RewardTrainer:
         rewards_from_obs = []
         with torch.no_grad():
             for s in traj:
-                r = self.net.get_returns(torch.from_numpy(np.array([s])).float().to(device))[0].item()
+                r = self.net.predict_returns(torch.from_numpy(np.array([s])).float().to(device))[0].item()
                 rewards_from_obs.append(r)
         return rewards_from_obs
 
