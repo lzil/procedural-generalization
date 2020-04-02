@@ -36,7 +36,7 @@ def log_this(config, log_dir, log_name=None):
     if log_name is None or len(log_name) == 0:
         log_name = run_id
     run_dir = os.path.join(log_dir, log_name)
-    os.makedirs(run_dir)
+    os.makedirs(run_dir, exist_ok=True)
     # might want to send stdout here later too
     path_config = os.path.join(run_dir, f'config_{run_id}.json')
     with open(path_config, 'w', encoding='utf-8') as f:
