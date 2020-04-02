@@ -74,6 +74,10 @@ def main():
 
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
+    print('--> mpi stuff starting')
+    print('comm ', comm)
+    print('rank ', rank)
+    print('--> mpi stuff ending')
 
     is_test_worker = False
 

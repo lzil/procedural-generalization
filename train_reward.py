@@ -29,6 +29,7 @@ def generate_procgen_demonstrations(env_fn, model, model_dir, eps_per_model):
     # to get episodes of varying reward, and add them to eps
     for model_file in os.scandir(model_dir):
         model.load(model_file)
+        # TODO (anton): go through procgenrunner and make it simpler and more interpretable? get rid of useless parts
         collector = ProcgenRunner(env_fn, model, 512)
         eps.extend(collector.collect_episodes(eps_per_model))
 
@@ -39,10 +40,12 @@ def generate_procgen_demonstrations(env_fn, model, model_dir, eps_per_model):
     return demonstrations, learning_returns, learning_rewards
 
 
-# TODO: use a DataLoader for this entire process. a lot neater
+# TODO (max): use a DataLoader for this entire process. a lot neater
 def create_training_data(demonstrations, num_snippets, min_snippet_length, max_snippet_length):
     # collect training data
     # demonstrations should be sorted by increasing returns
+
+    # TODO (anton): create a validation set as well. use a train dataloader and a separate test dataloader
     max_traj_len = 0
     training_obs = []
     training_labels = []
@@ -63,7 +66,6 @@ def create_training_data(demonstrations, num_snippets, min_snippet_length, max_s
         cur_len = np.random.randint(min_snippet_length, cur_max_snippet_len)
 
         #pick tj snippet to be later than ti
-        # TODO: why?? is it so that tj will be more representative of a successful trajectory?
         ti_start = np.random.randint(cur_min_len - cur_len + 1)
         tj_start = np.random.randint(ti_start, len(demonstrations[tj]) - cur_len + 1)
 
@@ -144,7 +146,8 @@ class RewardTrainer:
         cum_loss = 0.0
         training_data = list(zip(training_inputs, training_outputs))
         for epoch in range(self.args.num_iter):
-            # TODO: use a DataLoader here
+            # TODO (max): train until convergence
+            # TODO (max): use a DataLoader here
             np.random.shuffle(training_data)
             training_obs, training_labels = zip(*training_data)
             for i in range(len(training_labels)):
@@ -176,7 +179,7 @@ class RewardTrainer:
                     # TODO: give this a different name for each log so it doesn't keep overwriting
                     torch.save(self.net.state_dict(), self.args.reward_model_path)
 
-            # TODO: might want to calculate absolute accuracy every epoch or so
+            # TODO (max): might want to calculate absolute accuracy every epoch or so
 
         print("finished training")
 
@@ -236,6 +239,11 @@ def parse_config():
 
     args = parser.parse_args()
 
+    # TODO (max): change these so they make sense
+    # e.g. use some form of l1 regularization, add l2 reg, etc.
+    # use more than 5 epochs (e.g. train until convergence)
+    # there are other things to consider later, e.g. pytorch schedulers
+    # (that change the learning rate over time)
     args.lr = 0.00005
     args.weight_decay = 0.0
     args.num_iter = 5 #num times through training data
@@ -251,7 +259,9 @@ def parse_config():
 def main():
 
     args = parse_config()
+    # TODO (liang): add logging to this based on helpers/utils.py/log_this
 
+    # TODO (max): make seeds work properly
     seed = int(args.seed)
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -286,6 +296,8 @@ def main():
     
     assert len(demonstrations) == len(learning_returns), "demos and rews are not of equal lengths"
     print([a[0] for a in zip(learning_returns, demonstrations)])
+    # TODO (anton): move some of this code to the creating of training data
+    # might have to redo how some of this works
     demonstrations = [x for _, x in sorted(zip(learning_returns,demonstrations), key=lambda pair: pair[0])]
 
     sorted_returns = sorted(learning_returns)
@@ -295,6 +307,8 @@ def main():
     min_snippet_length = 10 #min length of trajectory for training comparison
     max_snippet_length = 100
     
+    # TODO (anton): this process might be different depending on what the true reward model looks like
+    # e.g. it's not very nice in coinrun
     training_obs, training_labels = create_training_data(demonstrations, num_snippets, min_snippet_length, max_snippet_length)
     print("num training_obs", len(training_obs))
     print("num_labels", len(training_labels))
