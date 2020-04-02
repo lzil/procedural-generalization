@@ -36,7 +36,7 @@ def parse_config():
     parser.add_argument('--reward_model_path', default='trex/reward_model_chaser', help="name and location for learned model params, e.g. ./learned_models/breakout.params")
 
     # logs every num_envs * nsteps
-    parser.add_argument('--log_interval', type=int, default=20)
+    parser.add_argument('--log_interval', type=int, default=5)
     parser.add_argument('--save_interval', type=int, default=20)
 
     parser.add_argument('--num_envs', type=int, default=64)
@@ -142,6 +142,7 @@ def main():
         init_fn=None,
         vf_coef=0.5,
         max_grad_norm=0.5,
+	load_path = args.load_path,
     )
 
     model.save(LOG_DIR+'/final_model.parameters')
