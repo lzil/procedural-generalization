@@ -15,7 +15,7 @@ from baselines import logger
 from mpi4py import MPI
 import argparse
 
-import reward_model
+
 
 from helpers.ProxyRewardWrapper import ProxyRewardWrapper
 from helpers.utils import add_yaml_args, log_this
@@ -104,7 +104,8 @@ def main():
     venv = VecMonitor(venv=venv, filename=None, keep_buf=100)
 
     # load pretrained network
-    net = reward_model.RewardNet()
+    from train_reward import RewardNet
+    net = RewardNet()
     net.load_state_dict(torch.load(args.reward_model_path, map_location=torch.device('cpu')))
 
     # use batch reward prediction function instead of the ground truth reward function
