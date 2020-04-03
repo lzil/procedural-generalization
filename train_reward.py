@@ -8,6 +8,7 @@ import torch.optim as optim
 import time
 import copy
 import os
+import random
 
 import tensorflow as tf
 
@@ -23,67 +24,65 @@ from helpers.utils import *
 import argparse
 
 
-def generate_procgen_demonstrations(env_fn, model, model_dir, eps_per_model):
-    eps = []
+def generate_procgen_dems(env_fn, model, model_dir, eps_per_model):
+    dems = []
     # load all the models from a particular directory
-    # to get episodes of varying reward, and add them to eps
+    # to get episodes of varying reward, and add them to dems
     for model_file in os.scandir(model_dir):
         model.load(model_file)
         # TODO (anton): go through procgenrunner and make it simpler and more interpretable? get rid of useless parts
         collector = ProcgenRunner(env_fn, model, 512)
-        eps.extend(collector.collect_episodes(eps_per_model))
+        dems.extend(collector.collect_episodes(eps_per_model))
 
-    demonstrations = [e['observations'] for e in eps]
-    learning_returns = [e['return'] for e in eps]
-    learning_rewards = [e['rewards'] for e in eps]
-
-    return demonstrations, learning_returns, learning_rewards
+    return dems
 
 
 # TODO (max): use a DataLoader for this entire process. a lot neater
-def create_training_data(demonstrations, num_snippets, min_snippet_length, max_snippet_length):
+def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length):
     # collect training data
-    # demonstrations should be sorted by increasing returns
+    # dems should be sorted by increasing returns
+
+    #print out some info
+    print(len(dems), ' demonstrations provided')
+    print("demo lengths :", [d['length'] for d in dems])
+    print('demo returns :', [d['return'] for d in dems])
+    demo_lens = [d['length'] for d in dems]
+    print(f'demo length: min = {min(demo_lens)}, max = {max(demo_lens)}')
 
     # TODO (anton): create a validation set as well. use a train dataloader and a separate test dataloader
-    max_traj_len = 0
     training_obs = []
     training_labels = []
-
-    n_demos = len(demonstrations)
-    demo_lens = [len(t) for t in demonstrations]
-    print(f'demo length: min = {min(demo_lens)}, max = {max(demo_lens)}')
+    
     for n in range(num_snippets):
-        ti = 0
-        tj = 0
-        #only add trajectories that are different returns, ti < tj
-        ti, tj = np.sort(np.random.choice(n_demos, 2, replace = False))
-        
+
+        #pick two random demos
+        two_dems = random.sample(dems, 2)
+        # d1['return'] <= d2['return']
+        d0, d1 = sorted(two_dems, key = lambda x: x['return'])
         #create random snippets
-        #find min length of both demos to ensure we can pick a demo no earlier than that chosen in worse preferred demo
-        cur_min_len = min(len(demonstrations[ti]), len(demonstrations[tj]))
+        
+        #first adjust max stippet length such that we can pick
+        #the later starting clip from the better trajectory
+        cur_min_len = min(d0['length'], d1['length'])
         cur_max_snippet_len = min(cur_min_len, max_snippet_length)
+        #randomly choose snipped length
         cur_len = np.random.randint(min_snippet_length, cur_max_snippet_len)
 
         #pick tj snippet to be later than ti
-        ti_start = np.random.randint(cur_min_len - cur_len + 1)
-        tj_start = np.random.randint(ti_start, len(demonstrations[tj]) - cur_len + 1)
+        d0_start = np.random.randint(cur_min_len - cur_len + 1)
+        d1_start = np.random.randint(d0_start, d1['length'] - cur_len + 1)
 
-        traj_i = demonstrations[ti][ti_start:ti_start+cur_len]
-        traj_j = demonstrations[tj][tj_start:tj_start+cur_len]
-
-        # update global maximum trajectory length
-        max_traj_len = max(max_traj_len, len(traj_i))
+        clip0  = d0['observations'][d0_start : d0_start+cur_len]
+        clip1  = d1['observations'][d1_start : d1_start+cur_len]
 
         # randomize label so reward learning model won't learn heuristic
         label = np.random.randint(2)
         if label:
-            training_obs.append((traj_i, traj_j))
+            training_obs.append((clip0, clip1))
         else:
-            training_obs.append((traj_j, traj_i))
+            training_obs.append((clip1, clip0))
         training_labels.append(label)
 
-    print(f"max traj length: {max_traj_len}")
     return training_obs, training_labels
 
 
@@ -267,7 +266,6 @@ def main():
     np.random.seed(seed)
     tf.set_random_seed(seed)
 
-    print("Training reward for", args.env_name)
     
     Procgen_fn = lambda: ProcgenEnv(
         num_envs=args.num_envs,
@@ -280,42 +278,27 @@ def main():
     
     # here is where the T-REX procedure begins
 
-    # collect a bunch of demonstrations from trained models
-
+    # collect a bunch of dems from trained models
+    print('Generating demonstrations ...')
     conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
     policy_model = ppo2.learn(env=venv_fn(), network=conv_fn, total_timesteps=0)
-    demonstrations, learning_returns, learning_rewards = generate_procgen_demonstrations(venv_fn,
-     policy_model, args.models_dir, eps_per_model = args.num_envs)
+    dems = generate_procgen_dems(venv_fn, policy_model, args.models_dir, eps_per_model = args.num_envs)
     # TODO: why is args.num_envs used as a placeholder for eps_per_model?
 
-
-    # sort the demonstrations according to ground truth reward to simulate ranked demos
-
-    demo_lengths = [len(d) for d in demonstrations]
-    print("demo lengths", demo_lengths)
-    
-    assert len(demonstrations) == len(learning_returns), "demos and rews are not of equal lengths"
-    print([a[0] for a in zip(learning_returns, demonstrations)])
-    # TODO (anton): move some of this code to the creating of training data
-    # might have to redo how some of this works
-    demonstrations = [x for _, x in sorted(zip(learning_returns,demonstrations), key=lambda pair: pair[0])]
-
-    sorted_returns = sorted(learning_returns)
-    print(sorted_returns)
-
+    print('Creating training data ...')
     num_snippets = args.num_snippets
     min_snippet_length = 10 #min length of trajectory for training comparison
     max_snippet_length = 100
     
     # TODO (anton): this process might be different depending on what the true reward model looks like
     # e.g. it's not very nice in coinrun
-    training_obs, training_labels = create_training_data(demonstrations, num_snippets, min_snippet_length, max_snippet_length)
+    training_obs, training_labels = create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length)
     print("num training_obs", len(training_obs))
     print("num_labels", len(training_labels))
 
    
-    # train a reward network using the demonstrations collected earlier and save it
-
+    # train a reward network using the dems collected earlier and save it
+    print("Training reward model for", args.env_name)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     trainer = RewardTrainer(args, device)
 
@@ -325,7 +308,7 @@ def main():
     # print out predicted cumulative returns and actual returns
 
     with torch.no_grad():
-        pred_returns = [trainer.predict_traj_return(traj) for traj in demonstrations]
+        pred_returns = [trainer.predict_traj_return(traj) for traj in dems]
     for i, p in enumerate(pred_returns):
         print(i,p,sorted_returns[i])
 
