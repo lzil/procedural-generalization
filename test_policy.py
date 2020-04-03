@@ -11,6 +11,7 @@ parser.add_argument('--distribution_mode', type=str, default='hard', choices=["e
 parser.add_argument('--num_levels', type=int, default=1)
 parser.add_argument('--start_level', type=int, default=1)
 parser.add_argument('--max_steps', type=int, default=500)
+parser.add_argument('--num_runs', type = int, default=128)
 parser.add_argument('--load_path', type=str, default = 'trex/reward_model_chaser',
     help = 'path to the model')
 
@@ -36,6 +37,6 @@ env_fn = lambda: VecExtractDictObs(venv(), "rgb")
 from helpers.trajectory_collection import ProcgenRunner
 
 collector = ProcgenRunner(env_fn, model, args.max_steps)
-eps = collector.collect_episodes(128)
+eps = collector.collect_episodes(args.num_runs)
 print(f'mean reward ={np.mean([ep["return"] for ep in eps])}')
 print('All returns: \n',[ep['return'] for ep in eps])

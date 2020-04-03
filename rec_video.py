@@ -63,15 +63,25 @@ if __name__ == '__main__':
 
 
     #Initializing the model given the environment parameters and path to the saved model
-    venv = ProcgenEnv(num_envs=args.num_screens, env_name=args.env_name, num_levels=args.num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
-    venv = VecExtractDictObs(venv, "rgb")
+    env_fn = lambda: ProcgenEnv(\
+        num_envs=args.num_screens,
+        env_name=args.env_name,
+        num_levels=args.num_levels,
+        start_level=args.start_level,
+        distribution_mode=args.distribution_mode)
+    venv_fn  = lambda: VecExtractDictObs(env_fn(), "rgb")
+
     conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
-    model = ppo2.learn(env=venv, network=conv_fn, total_timesteps=0, load_path = args.load_path)
+
+    model = ppo2.learn(env=venv_fn(), network=conv_fn, total_timesteps=0, load_path = args.load_path)
 
     #this wrapper from openai-baselines records a video
-    env_fn = lambda: VecVideoRecorder(venv, "Video", record_video_trigger=lambda x: x == 1, video_length=args.video_length) 
+    video_env_fn = lambda: VecVideoRecorder(venv_fn(),
+     directory = "Video",
+     record_video_trigger=lambda x: x == 1,
+     video_length=args.video_length) 
 
-    recorder = VideoRunner(env_fn, model, args.video_length)
+    recorder = VideoRunner(video_env_fn, model, args.video_length)
     recorder.run()
 
 
