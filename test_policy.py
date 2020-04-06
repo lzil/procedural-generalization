@@ -38,5 +38,5 @@ from helpers.trajectory_collection import ProcgenRunner
 
 collector = ProcgenRunner(env_fn, model, args.max_steps)
 eps = collector.collect_episodes(args.num_runs)
-print(f'mean reward ={np.mean([ep["return"] for ep in eps])}')
+print(f'Mean return ={np.mean([ep["return"] for ep in eps])}')
 print('All returns: \n',[ep['return'] for ep in eps])

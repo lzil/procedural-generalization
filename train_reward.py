@@ -24,17 +24,21 @@ from helpers.utils import *
 import argparse
 
 
-def generate_procgen_dems(env_fn, model, model_dir, eps_per_model):
-    dems = []
-    # load all the models from a particular directory
-    # to get episodes of varying reward, and add them to dems
-    for model_file in os.scandir(model_dir):
-        model.load(model_file)
-        # TODO (anton): go through procgenrunner and make it simpler and more interpretable? get rid of useless parts
-        collector = ProcgenRunner(env_fn, model, 512)
-        dems.extend(collector.collect_episodes(eps_per_model))
+def generate_procgen_dems(env_fn, model, model_dir, max_ep_len, num_dems):
+    
+    """
+    loop through models in model_dir and sample demonstrations
+    until num_dems demonstrations is collected
+    """
 
-    return dems
+    dems = []
+    while len(dems) < num_dems:
+        for model_file in os.scandir(model_dir):
+            model.load(model_file)
+            collector = ProcgenRunner(env_fn, model, max_ep_len)
+            dems.extend(collector.collect_episodes(1)) #collects one episode with current model
+
+    return dems[:num_dems]
 
 
 # TODO (max): use a DataLoader for this entire process. a lot neater
@@ -48,7 +52,7 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
     print('demo returns :', [d['return'] for d in dems])
     demo_lens = [d['length'] for d in dems]
     print(f'demo length: min = {min(demo_lens)}, max = {max(demo_lens)}')
-
+    assert min_snippet_length < min(demo_lens), "One of the trajectories is too short"
     # TODO (anton): create a validation set as well. use a train dataloader and a separate test dataloader
     training_obs = []
     training_labels = []
@@ -84,6 +88,44 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
         training_labels.append(label)
 
     return training_obs, training_labels
+
+
+class ComparisonDataset(torch.utils.data.Dataset):
+  def __init__(self, snippet_pairs, labels):
+        'Initialization'
+        self.labels = labels
+        self.snippet_pairs = snippet_pairs
+
+  def __len__(self):
+        'Denotes the total number of samples'
+        return len(self.snippet_pairs)
+
+  def __getitem__(self, index):
+        'Generates one sample of data'
+
+        X = self.snippet_pairs[index]
+        y = self.labels[index]
+
+        return X, y
+
+
+def get_dataloaders(obs, labels):
+    #pinning memory when using cuda supposedly loads the data faster
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    kwargs = {'num_workers': 1, 'pin_memory': True} if device=='cuda' else {}
+
+    split = int(np.floor(len(labels) * 0.8))
+    train_dataset = ComparisonDataset(obs[:split], labels[:split])
+    valid_dataset = ComparisonDataset(obs[split:], labels[split:])
+
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=1, shuffle=True, **kwargs)
+    test_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=1, shuffle=False, **kwargs)
+
+    return train_loader, test_loader
+        
+
+def create_test_data():
+    pass
 
 
 # actual reward learning network
@@ -143,20 +185,19 @@ class RewardTrainer:
         optimizer = optim.Adam(self.net.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
         
         cum_loss = 0.0
-        training_data = list(zip(training_inputs, training_outputs))
+        train_loader,test_loader = get_dataloaders(training_inputs, training_outputs)
         for epoch in range(self.args.num_iter):
-            # TODO (max): train until convergence
-            # TODO (max): use a DataLoader here
-            np.random.shuffle(training_data)
-            training_obs, training_labels = zip(*training_data)
-            for i in range(len(training_labels)):
-                traj_i, traj_j = training_obs[i]
-                labels = np.array([training_labels[i]])
-                traj_i = np.array(traj_i)
-                traj_j = np.array(traj_j)
-                traj_i = torch.from_numpy(traj_i).float().to(self.device)
-                traj_j = torch.from_numpy(traj_j).float().to(self.device)
-                labels = torch.from_numpy(labels).to(self.device)
+            i=0 
+            for (traj_i, traj_j), label in train_loader:
+                traj_i = traj_i.squeeze(0).float().to(self.device)
+                traj_j = traj_j.squeeze(0).float().to(self.device)
+                label = label.to(self.device)
+                # labels = np.array([training_labels[i]])
+                # traj_i = np.array(traj_i)
+                # traj_j = np.array(traj_j)
+                # traj_i = torch.from_numpy(traj_i).float().to(self.device)
+                # traj_j = torch.from_numpy(traj_j).float().to(self.device)
+                # labels = torch.from_numpy(labels).to(self.device)
 
                 optimizer.zero_grad()
 
@@ -165,12 +206,13 @@ class RewardTrainer:
                 outputs = outputs.unsqueeze(0)
                 # TODO: confirm the dimensionality here is correct. not totally sure
                 # TODO: consider l2 regularization?
-                loss = loss_criterion(outputs, labels) + self.args.lam_l1 * abs_rewards
+                loss = loss_criterion(outputs, label) + self.args.lam_l1 * abs_rewards
                 loss.backward()
                 optimizer.step()
 
                 item_loss = loss.item()
                 cum_loss += item_loss
+                i+=1
                 if i % 1000 == 999:
                     print("epoch {}, step {}: loss {}".format(epoch,i, cum_loss))
                     print(f'absolute rewards = {abs_rewards.item()}')
@@ -230,12 +272,11 @@ def parse_config():
         choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=0)
     parser.add_argument('--seed', default=0, help="random seed for experiments")
-    parser.add_argument('--num_envs', type=int, default=2, help="number of demos per model")
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--num_snippets', default=6000, type=int, help="number of short subtrajectories to sample")
     parser.add_argument('--models_dir', default = "trex/chaser_model_dir", help="path to directory that contains a models directory in which the checkpoint models for demos are stored")
     parser.add_argument('--reward_model_path', default='trex/reward_model_chaser', help="name and location for learned model params, e.g. ./learned_models/breakout.params")
-
+    parser.add_argument('--num_dems',type=int, default = 12 , help = 'Number of demonstrations to train on')
     args = parser.parse_args()
 
     # TODO (max): change these so they make sense
@@ -268,7 +309,7 @@ def main():
 
     
     Procgen_fn = lambda: ProcgenEnv(
-        num_envs=args.num_envs,
+        num_envs=1,
         env_name=args.env_name,
         num_levels=args.num_levels,
         start_level=args.start_level,
@@ -280,10 +321,10 @@ def main():
 
     # collect a bunch of dems from trained models
     print('Generating demonstrations ...')
+    #first we initialize the model of the correct shape using ppo.learn for 0 timesteps
     conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
     policy_model = ppo2.learn(env=venv_fn(), network=conv_fn, total_timesteps=0)
-    dems = generate_procgen_dems(venv_fn, policy_model, args.models_dir, eps_per_model = args.num_envs)
-    # TODO: why is args.num_envs used as a placeholder for eps_per_model?
+    dems = generate_procgen_dems(venv_fn, policy_model, args.models_dir, max_ep_len=512, num_dems=args.num_dems)
 
     print('Creating training data ...')
     num_snippets = args.num_snippets
@@ -293,10 +334,8 @@ def main():
     # TODO (anton): this process might be different depending on what the true reward model looks like
     # e.g. it's not very nice in coinrun
     training_obs, training_labels = create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length)
-    print("num training_obs", len(training_obs))
-    print("num_labels", len(training_labels))
 
-   
+
     # train a reward network using the dems collected earlier and save it
     print("Training reward model for", args.env_name)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -308,9 +347,9 @@ def main():
     # print out predicted cumulative returns and actual returns
 
     with torch.no_grad():
-        pred_returns = [trainer.predict_traj_return(traj) for traj in dems]
+        pred_returns = [trainer.predict_traj_return(demo['observations']) for demo in dems]
     for i, p in enumerate(pred_returns):
-        print(i,p,sorted_returns[i])
+        print(i,p, dems[i]['return'])
 
     print("accuracy", trainer.calc_accuracy(training_obs, training_labels))
 

@@ -15,11 +15,7 @@ class ProcgenRunner:
         self.env_fn = env_fn
         self.model = model
         self.states = model.initial_state
-        self.nsteps = nsteps
-
-    def hello(self):
-        venv = self.env
-        
+        self.nsteps = nsteps #maximum length of trajectory
 
     def run(self):
         venv = self.env_fn()
@@ -80,49 +76,6 @@ class ProcgenRunner:
         return np.asarray(batch[:n_episodes])
 
 
-class PreferencesReplayBuffer:
-    def __init__(self):
-        self.buffer = []
-        self.model_index=[]
-        self.n_additions = 0
-        self.current_size = 0
-
-    def add_episode_pairs(self, runner, n_pairs):
-        """Adds a specified number of pairs of episodes to the batch
-        stores relevant model index number to self.model_index
-        
-        episodes are collected using the same model
-        """
-        episodes = runner.collect_episodes(2 * n_pairs)
-        for i in range(n_pairs):
-            prefs = self.simple_compare(episodes[2*i], episodes[2*i+1])
-            episodes[2*i]['preference'], episodes[2*i+1]['preference'] = prefs
-
-            self.buffer.append(episodes[2*i:2*i+2])
-
-        self.model_index.extend([self.n_additions for _ in range(n_pairs)])
-        self.current_size += n_pairs
-
-    def sample(self, batch_size):
-        """Returns the batch of trajectories with preferences
-        Each entry in a batch has 2 trajectories which a dictionaries
-        with keys:
-            'observations', 'rewards', 'actions', 'dones', 'preference'
-        """
-        return random.sample(self.buffer, batch_size)
-
-
-    def simple_compare(self, traj_1, traj_2):
-        """
-        Returns the preference as a pair of numbers [0, 1] or [0.5, 0.5]
-        """
-
-        if np.sum(traj_1['rewards']) > np.sum(traj_2['rewards']):
-            return [1, 0]
-        elif np.sum(traj_1['rewards']) < np.sum(traj_2['rewards']):
-            return [0, 1]
-        else:
-            return [0.5, 0.5]
 
         
 
