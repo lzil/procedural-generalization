@@ -163,21 +163,49 @@ class RewardTrainer:
 
                 #forward + backward + optimize
                 outputs, abs_rewards = self.net.forward(traj_i, traj_j)
+                print('outputs', outputs)
+                print('abs_rewards', abs_rewards)
                 outputs = outputs.unsqueeze(0)
+                print('outputs unsqueezed', outputs)
+                print('labels', labels)
                 # TODO: confirm the dimensionality here is correct. not totally sure
+                #looks good
+
                 # TODO: consider l2 regularization?
-                loss = loss_criterion(outputs, labels) + self.args.lam_l1 * abs_rewards
+                #seems to be included with the optimizer weight_decay value
+                #https://pytorch.org/docs/stable/_modules/torch/optim/adam.html#Adam 
+                
+                #l1_reg = self.args.lam_l1 * abs_rewards
+                #implemented l1 reg using weights, above is alt way?
+
+                l1_reg = torch.tensor(0., requires_grad=True)
+                for name, param in self.net.named_parameters():
+                    if 'weight' in name:
+                        l1_reg = l1_reg + torch.norm(param, 1)
+                print('l1 reg 1', l1_reg)
+                print('lam', self.args.lam_l1)
+                l1_reg = l1_reg * self.args.lam_l1
+
+                print('loss crit', loss_criterion(outputs, labels))
+                print('l1 reg', l1_reg)
+                
+                loss = loss_criterion(outputs, labels) + l1_reg
                 loss.backward()
                 optimizer.step()
 
                 item_loss = loss.item()
                 cum_loss += item_loss
+                print(item_loss)
+                print(cum_loss)
                 if i % 1000 == 999:
-                    print("epoch {}, step {}: loss {}".format(epoch,i, cum_loss))
+                    print("epoch {}, step {}: loss {}".format(epoch, i, cum_loss))
                     print(f'absolute rewards = {abs_rewards.item()}')
+                    prev_cum_loss = cum_loss
                     cum_loss = 0.0
                     # TODO: give this a different name for each log so it doesn't keep overwriting
-                    torch.save(self.net.state_dict(), self.args.reward_model_path)
+                    torch.save(self.net.state_dict(), self.args.reward_model_path + '_' + str(epoch) + '_' + str(i))
+                    if (1 - prev_cum_loss/cum_loss) < self.args.converg: #convergence
+                        break
 
             # TODO (max): might want to calculate absolute accuracy every epoch or so
 
@@ -246,8 +274,9 @@ def parse_config():
     # (that change the learning rate over time)
     args.lr = 0.00005
     args.weight_decay = 0.0
-    args.num_iter = 5 #num times through training data
-    args.lam_l1=0.0
+    args.num_iter = 500 #maximum num times through training data 
+    args.lam_l1=0.0 
+    args.converg = .001
     args.stochastic = True
 
     if args.config is not None:
@@ -266,6 +295,7 @@ def main():
     torch.manual_seed(seed)
     np.random.seed(seed)
     tf.set_random_seed(seed)
+    tf.compat.v1.set_random_seed(seed)
 
     print("Training reward for", args.env_name)
     
