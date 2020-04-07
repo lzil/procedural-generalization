@@ -22,6 +22,8 @@ from helpers.utils import *
 
 import argparse
 
+#traj_j in learn_reward and calc_accuracy into a function
+
 
 def generate_procgen_demonstrations(env_fn, model, model_dir, eps_per_model):
     eps = []
@@ -144,6 +146,7 @@ class RewardTrainer:
         optimizer = optim.Adam(self.net.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
         
         cum_loss = 0.0
+        epoch_loss = 0.0
         training_data = list(zip(training_inputs, training_outputs))
         for epoch in range(self.args.num_iter):
             # TODO (max): train until convergence
@@ -163,16 +166,16 @@ class RewardTrainer:
 
                 #forward + backward + optimize
                 outputs, abs_rewards = self.net.forward(traj_i, traj_j)
-                print('outputs', outputs)
-                print('abs_rewards', abs_rewards)
+                #print('outputs', outputs)
+                #print('abs_rewards', abs_rewards)
                 outputs = outputs.unsqueeze(0)
-                print('outputs unsqueezed', outputs)
-                print('labels', labels)
+                #print('outputs unsqueezed', outputs)
+                #print('labels', labels)
                 # TODO: confirm the dimensionality here is correct. not totally sure
                 #looks good
 
                 # TODO: consider l2 regularization?
-                #seems to be included with the optimizer weight_decay value
+                #included with the optimizer weight_decay value
                 #https://pytorch.org/docs/stable/_modules/torch/optim/adam.html#Adam 
                 
                 #l1_reg = self.args.lam_l1 * abs_rewards
@@ -182,30 +185,30 @@ class RewardTrainer:
                 for name, param in self.net.named_parameters():
                     if 'weight' in name:
                         l1_reg = l1_reg + torch.norm(param, 1)
-                print('l1 reg 1', l1_reg)
-                print('lam', self.args.lam_l1)
+                #print('l1 reg 1', l1_reg)
+                #print('lam', self.args.lam_l1)
                 l1_reg = l1_reg * self.args.lam_l1
 
-                print('loss crit', loss_criterion(outputs, labels))
-                print('l1 reg', l1_reg)
+                #print('loss crit', loss_criterion(outputs, labels))
+                #print('l1 reg', l1_reg)
                 
                 loss = loss_criterion(outputs, labels) + l1_reg
                 loss.backward()
                 optimizer.step()
 
                 item_loss = loss.item()
-                cum_loss += item_loss
-                print(item_loss)
-                print(cum_loss)
+                epoch_loss += item_loss
+                #print(item_loss)
+                #print(cum_loss)
                 if i % 1000 == 999:
+                    cum_loss += epoch_loss
                     print("epoch {}, step {}: loss {}".format(epoch, i, cum_loss))
                     print(f'absolute rewards = {abs_rewards.item()}')
-                    prev_cum_loss = cum_loss
-                    cum_loss = 0.0
-                    # TODO: give this a different name for each log so it doesn't keep overwriting
+                    # TODO: give this a different name for each log so it doesn't keep overwriting                  
                     torch.save(self.net.state_dict(), self.args.reward_model_path + '_' + str(epoch) + '_' + str(i))
-                    if (1 - prev_cum_loss/cum_loss) < self.args.converg: #convergence
+                    if (1 - (cum_loss-epoch_loss)/cum_loss) < self.args.converg: #convergence
                         break
+                    epoch_loss = 0.0
 
             # TODO (max): might want to calculate absolute accuracy every epoch or so
 
@@ -263,7 +266,8 @@ def parse_config():
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--num_snippets', default=6000, type=int, help="number of short subtrajectories to sample")
     parser.add_argument('--models_dir', default = "trex/chaser_model_dir", help="path to directory that contains a models directory in which the checkpoint models for demos are stored")
-    parser.add_argument('--reward_model_path', default='trex/reward_model_chaser', help="name and location for learned model params, e.g. ./learned_models/breakout.params")
+    #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
+    parser.add_argument('--reward_model_path', default='trex/reward_model_chaser/test1', help="name and location for learned model params, e.g. ./learned_models/breakout.params")
 
     args = parser.parse_args()
 
@@ -339,6 +343,7 @@ def main():
     
     # TODO (anton): this process might be different depending on what the true reward model looks like
     # e.g. it's not very nice in coinrun
+
     training_obs, training_labels = create_training_data(demonstrations, num_snippets, min_snippet_length, max_snippet_length)
     print("num training_obs", len(training_obs))
     print("num_labels", len(training_labels))
