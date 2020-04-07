@@ -54,8 +54,7 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
     print(f'demo length: min = {min(demo_lens)}, max = {max(demo_lens)}')
     assert min_snippet_length < min(demo_lens), "One of the trajectories is too short"
     
-    training_obs = []
-    training_labels = []
+    training_data = []
     
     for n in range(num_snippets):
 
@@ -82,50 +81,11 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
         # randomize label so reward learning model won't learn heuristic
         label = np.random.randint(2)
         if label:
-            training_obs.append((clip0, clip1))
+            training_data.append(([clip0, clip1], np.array([1])))
         else:
-            training_obs.append((clip1, clip0))
-        training_labels.append(label)
+            training_data.append(([clip1, clip0], np.array([0])))
 
-    return training_obs, training_labels
-
-
-# class ComparisonDataset(torch.utils.data.Dataset):
-#   def __init__(self, snippet_pairs, labels):
-#         'Initialization'
-#         self.labels = labels
-#         self.snippet_pairs = snippet_pairs
-
-#   def __len__(self):
-#         'Denotes the total number of samples'
-#         return len(self.snippet_pairs)
-
-#   def __getitem__(self, index):
-#         'Generates one sample of data'
-
-#         X = self.snippet_pairs[index]
-#         y = self.labels[index]
-
-#         return X, y
-
-
-# def get_dataloaders(obs, labels):
-#     #pinning memory when using cuda supposedly loads the data faster
-#     device = "cuda" if torch.cuda.is_available() else "cpu"
-#     kwargs = {'num_workers': 1, 'pin_memory': True} if device=='cuda' else {}
-
-#     split = int(np.floor(len(labels) * 0.8))
-#     train_dataset = ComparisonDataset(obs[:split], labels[:split])
-#     valid_dataset = ComparisonDataset(obs[split:], labels[split:])
-
-#     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=1, shuffle=True, **kwargs)
-#     test_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=1, shuffle=False, **kwargs)
-
-#     return train_loader, test_loader
-        
-
-def create_test_data():
-    pass
+    return np.array(training_data)
 
 
 # actual reward learning network
@@ -179,25 +139,20 @@ class RewardTrainer:
         self.args = args
 
     # Train the network
-    def learn_reward(self, training_inputs, training_outputs):
+    def learn_reward(self, training_data):
         loss_criterion = nn.CrossEntropyLoss()
 
         optimizer = optim.Adam(self.net.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
-        
+                  
         cum_loss = 0.0
-        train_loader,test_loader = get_dataloaders(training_inputs, training_outputs)
         for epoch in range(self.args.num_iter):
-            i=0 
-            for (traj_i, traj_j), label in train_loader:
-                traj_i = traj_i.squeeze(0).float().to(self.device)
-                traj_j = traj_j.squeeze(0).float().to(self.device)
-                label = label.to(self.device)
-                # labels = np.array([training_labels[i]])
-                # traj_i = np.array(traj_i)
-                # traj_j = np.array(traj_j)
-                # traj_i = torch.from_numpy(traj_i).float().to(self.device)
-                # traj_j = torch.from_numpy(traj_j).float().to(self.device)
-                # labels = torch.from_numpy(labels).to(self.device)
+
+            np.random.shuffle(training_data)
+            for i, ([traj_i, traj_j], label) in enumerate(training_data):
+
+                traj_i = torch.from_numpy(traj_i).float().to(self.device)
+                traj_j = torch.from_numpy(traj_j).float().to(self.device)
+                label = torch.from_numpy(label).to(self.device)
 
                 optimizer.zero_grad()
 
@@ -229,16 +184,12 @@ class RewardTrainer:
         torch.save(self.net.state_dict(), self.args.reward_model_path)
 
     # calculate and return accuracy on entire training set
-    def calc_accuracy(self, training_inputs, training_outputs):
+    def calc_accuracy(self, training_data):
         loss_criterion = nn.CrossEntropyLoss()
         num_correct = 0.
         with torch.no_grad():
             # TODO: use a DataLoader
-            for i in range(len(training_inputs)):
-                label = training_outputs[i]
-                traj_i, traj_j = training_inputs[i]
-                traj_i = np.array(traj_i)
-                traj_j = np.array(traj_j)
+            for [traj_i, traj_j], label in training_data:
                 traj_i = torch.from_numpy(traj_i).float().to(self.device)
                 traj_j = torch.from_numpy(traj_j).float().to(self.device)
 
@@ -247,7 +198,7 @@ class RewardTrainer:
                 _, pred_label = torch.max(outputs,0)
                 if pred_label.item() == label:
                     num_correct += 1.
-        return num_correct / len(training_inputs)
+        return num_correct / len(training_data)
 
 
     # purpose of these two functions is to get predicted return (via reward net) from the trajectory given as input
@@ -306,6 +257,7 @@ def main():
     torch.manual_seed(seed)
     np.random.seed(seed)
     tf.set_random_seed(seed)
+    random.seed(seed)
 
     
     Procgen_fn = lambda: ProcgenEnv(
@@ -313,7 +265,8 @@ def main():
         env_name=args.env_name,
         num_levels=args.num_levels,
         start_level=args.start_level,
-        distribution_mode=args.distribution_mode
+        distribution_mode=args.distribution_mode,
+        rand_seed = seed
     )
     venv_fn = lambda: VecExtractDictObs(Procgen_fn(), "rgb")
     
@@ -323,7 +276,7 @@ def main():
     print('Generating demonstrations ...')
     #first we initialize the model of the correct shape using ppo.learn for 0 timesteps
     conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
-    policy_model = ppo2.learn(env=venv_fn(), network=conv_fn, total_timesteps=0)
+    policy_model = ppo2.learn(env=venv_fn(), network=conv_fn, total_timesteps=0, seed = seed)
     dems = generate_procgen_dems(venv_fn, policy_model, args.models_dir, max_ep_len=512, num_dems=args.num_dems)
 
     print('Creating training data ...')
@@ -333,7 +286,7 @@ def main():
     
     # TODO (anton): this process might be different depending on what the true reward model looks like
     # e.g. it's not very nice in coinrun
-    training_obs, training_labels = create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length)
+    training_data = create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length)
 
 
     # train a reward network using the dems collected earlier and save it
@@ -341,17 +294,18 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     trainer = RewardTrainer(args, device)
 
-    trainer.learn_reward(training_obs, training_labels)
+    trainer.learn_reward(training_data)
     trainer.save_model()
     
     # print out predicted cumulative returns and actual returns
 
     with torch.no_grad():
-        pred_returns = [trainer.predict_traj_return(demo['observations']) for demo in dems]
-    for i, p in enumerate(pred_returns):
-        print(i,p, dems[i]['return'])
+        print('true     |predicted')
+        for demo in sorted(dems, key = lambda x: x['return']):
+            print(f"{demo['return']:9.2f}|{trainer.predict_traj_return(demo['observations']):9.2f}")
 
-    print("accuracy", trainer.calc_accuracy(training_obs, training_labels))
+
+    print("accuracy", trainer.calc_accuracy(training_data))
 
 
 if __name__=="__main__":
