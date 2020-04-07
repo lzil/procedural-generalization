@@ -48,6 +48,7 @@ class ProcgenRunner:
         mb_actions = np.asarray(mb_actions)
         mb_values = np.asarray(mb_values, dtype=np.float32)
         mb_neglogpacs = np.asarray(mb_neglogpacs, dtype=np.float32)
+        mb_dones = np.asarray(mb_dones, dtype=np.bool)
 
         #shape of each is [nsteps, nenv, ... ]
         return mb_obs, mb_rewards, mb_dones, mb_actions, mb_values, mb_neglogpacs, mb_states, epinfos
