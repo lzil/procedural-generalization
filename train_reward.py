@@ -40,20 +40,20 @@ def generate_procgen_dems(env_fn, model, model_dir, max_ep_len, num_dems):
 
     return dems[:num_dems]
 
-
-# TODO (max): use a DataLoader for this entire process. a lot neater
 def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length):
-    # collect training data
-    # dems should be sorted by increasing returns
+    """
+    This function takes a set of demonstrations and produces 
+    a training set consisting of pairs of clips with assigned preferences
+    """
 
-    #print out some info
+    #Print out some info
     print(len(dems), ' demonstrations provided')
     print("demo lengths :", [d['length'] for d in dems])
     print('demo returns :', [d['return'] for d in dems])
     demo_lens = [d['length'] for d in dems]
     print(f'demo length: min = {min(demo_lens)}, max = {max(demo_lens)}')
     assert min_snippet_length < min(demo_lens), "One of the trajectories is too short"
-    # TODO (anton): create a validation set as well. use a train dataloader and a separate test dataloader
+    
     training_obs = []
     training_labels = []
     
@@ -90,38 +90,38 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
     return training_obs, training_labels
 
 
-class ComparisonDataset(torch.utils.data.Dataset):
-  def __init__(self, snippet_pairs, labels):
-        'Initialization'
-        self.labels = labels
-        self.snippet_pairs = snippet_pairs
+# class ComparisonDataset(torch.utils.data.Dataset):
+#   def __init__(self, snippet_pairs, labels):
+#         'Initialization'
+#         self.labels = labels
+#         self.snippet_pairs = snippet_pairs
 
-  def __len__(self):
-        'Denotes the total number of samples'
-        return len(self.snippet_pairs)
+#   def __len__(self):
+#         'Denotes the total number of samples'
+#         return len(self.snippet_pairs)
 
-  def __getitem__(self, index):
-        'Generates one sample of data'
+#   def __getitem__(self, index):
+#         'Generates one sample of data'
 
-        X = self.snippet_pairs[index]
-        y = self.labels[index]
+#         X = self.snippet_pairs[index]
+#         y = self.labels[index]
 
-        return X, y
+#         return X, y
 
 
-def get_dataloaders(obs, labels):
-    #pinning memory when using cuda supposedly loads the data faster
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    kwargs = {'num_workers': 1, 'pin_memory': True} if device=='cuda' else {}
+# def get_dataloaders(obs, labels):
+#     #pinning memory when using cuda supposedly loads the data faster
+#     device = "cuda" if torch.cuda.is_available() else "cpu"
+#     kwargs = {'num_workers': 1, 'pin_memory': True} if device=='cuda' else {}
 
-    split = int(np.floor(len(labels) * 0.8))
-    train_dataset = ComparisonDataset(obs[:split], labels[:split])
-    valid_dataset = ComparisonDataset(obs[split:], labels[split:])
+#     split = int(np.floor(len(labels) * 0.8))
+#     train_dataset = ComparisonDataset(obs[:split], labels[:split])
+#     valid_dataset = ComparisonDataset(obs[split:], labels[split:])
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=1, shuffle=True, **kwargs)
-    test_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=1, shuffle=False, **kwargs)
+#     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=1, shuffle=True, **kwargs)
+#     test_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=1, shuffle=False, **kwargs)
 
-    return train_loader, test_loader
+#     return train_loader, test_loader
         
 
 def create_test_data():
