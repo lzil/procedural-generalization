@@ -23,6 +23,8 @@ from helpers.utils import *
 
 import argparse
 
+#traj_j in learn_reward and calc_accuracy into a function
+
 
 def generate_procgen_dems(env_fn, model, model_dir, max_ep_len, num_dems):
     
@@ -145,6 +147,7 @@ class RewardTrainer:
         optimizer = optim.Adam(self.net.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
                   
         cum_loss = 0.0
+        epoch_loss = 0.0
         for epoch in range(self.args.num_iter):
             np.random.shuffle(training_data)
             for i, ([traj_i, traj_j], label) in enumerate(training_data):
@@ -157,22 +160,50 @@ class RewardTrainer:
 
                 #forward + backward + optimize
                 outputs, abs_rewards = self.net.forward(traj_i, traj_j)
+                #print('outputs', outputs)
+                #print('abs_rewards', abs_rewards)
                 outputs = outputs.unsqueeze(0)
+                #print('outputs unsqueezed', outputs)
+                #print('labels', labels)
                 # TODO: confirm the dimensionality here is correct. not totally sure
+                #looks good
+
                 # TODO: consider l2 regularization?
-                loss = loss_criterion(outputs, label) + self.args.lam_l1 * abs_rewards
+                #included with the optimizer weight_decay value
+                #https://pytorch.org/docs/stable/_modules/torch/optim/adam.html#Adam 
+                
+                #l1_reg = self.args.lam_l1 * abs_rewards
+                #implemented l1 reg using weights, above is alt way?
+
+                l1_reg = torch.tensor(0., requires_grad=True)
+                for name, param in self.net.named_parameters():
+                    if 'weight' in name:
+                        l1_reg = l1_reg + torch.norm(param, 1)
+                #print('l1 reg 1', l1_reg)
+                #print('lam', self.args.lam_l1)
+                l1_reg = l1_reg * self.args.lam_l1
+
+                #print('loss crit', loss_criterion(outputs, labels))
+                #print('l1 reg', l1_reg)
+                
+                loss = loss_criterion(outputs, labels) + l1_reg
                 loss.backward()
                 optimizer.step()
 
                 item_loss = loss.item()
-                cum_loss += item_loss
+                epoch_loss += item_loss
                 i+=1
+                #print(item_loss)
+                #print(cum_loss)
                 if i % 1000 == 999:
-                    print("epoch {}, step {}: loss {}".format(epoch,i, cum_loss))
+                    cum_loss += epoch_loss
+                    print("epoch {}, step {}: loss {}".format(epoch, i, cum_loss))
                     print(f'absolute rewards = {abs_rewards.item()}')
-                    cum_loss = 0.0
-                    # TODO: give this a different name for each log so it doesn't keep overwriting
-                    torch.save(self.net.state_dict(), self.args.reward_model_path)
+                    # TODO: give this a different name for each log so it doesn't keep overwriting                  
+                    torch.save(self.net.state_dict(), self.args.reward_model_path + '_' + str(epoch) + '_' + str(i))
+                    if (1 - (cum_loss-epoch_loss)/cum_loss) < self.args.converg: #convergence
+                        break
+                    epoch_loss = 0.0
 
             # TODO (max): might want to calculate absolute accuracy every epoch or so
 
@@ -223,7 +254,8 @@ def parse_config():
     parser.add_argument('--seed', default=0, help="random seed for experiments")
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--num_snippets', default=6000, type=int, help="number of short subtrajectories to sample")
-
+    #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
+    parser.add_argument('--reward_model_path', default='trex/reward_model_chaser/test1', help="name and location for learned model params, e.g. ./learned_models/breakout.params")
     parser.add_argument('--log_dir', default='trex', help='general logs directory')
     parser.add_argument('--log_name', default='', help='specific name for this run')
     parser.add_argument('--models_dir', default = "trex/chaser_model_dir", help="directory that contains checkpoint models for demos")
@@ -237,8 +269,9 @@ def parse_config():
     # (that change the learning rate over time)
     args.lr = 0.00005
     args.weight_decay = 0.0
-    args.num_iter = 5 #num times through training data
-    args.lam_l1=0.0
+    args.num_iter = 500 #maximum num times through training data 
+    args.lam_l1=0.0 
+    args.converg = .001
     args.stochastic = True
 
     if args.config is not None:
