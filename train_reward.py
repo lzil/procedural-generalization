@@ -147,16 +147,15 @@ class RewardTrainer:
         training_data = list(zip(training_inputs, training_outputs))
         for epoch in range(self.args.num_iter):
             # TODO (max): train until convergence
-            # TODO (max): use a DataLoader here
             np.random.shuffle(training_data)
             training_obs, training_labels = zip(*training_data)
             for i in range(len(training_labels)):
                 traj_i, traj_j = training_obs[i]
-                labels = np.array([training_labels[i]])
                 traj_i = np.array(traj_i)
                 traj_j = np.array(traj_j)
                 traj_i = torch.from_numpy(traj_i).float().to(self.device)
                 traj_j = torch.from_numpy(traj_j).float().to(self.device)
+                labels = np.array([training_labels[i]])
                 labels = torch.from_numpy(labels).to(self.device)
 
                 optimizer.zero_grad()
@@ -192,7 +191,6 @@ class RewardTrainer:
         loss_criterion = nn.CrossEntropyLoss()
         num_correct = 0.
         with torch.no_grad():
-            # TODO: use a DataLoader
             for i in range(len(training_inputs)):
                 label = training_outputs[i]
                 traj_i, traj_j = training_inputs[i]
@@ -234,8 +232,10 @@ def parse_config():
     parser.add_argument('--num_envs', type=int, default=2, help="number of demos per model")
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--num_snippets', default=6000, type=int, help="number of short subtrajectories to sample")
-    parser.add_argument('--models_dir', default = "trex/chaser_model_dir", help="path to directory that contains a models directory in which the checkpoint models for demos are stored")
-    parser.add_argument('--reward_model_path', default='trex/reward_model_chaser', help="name and location for learned model params, e.g. ./learned_models/breakout.params")
+
+    parser.add_argument('--log_dir', default='trex')
+    parser.add_argument('--log_name', default='')
+    parser.add_argument('--models_dir', default = "trex/chaser_model_dir", help="directory that contains checkpoint models for demos")
 
     args = parser.parse_args()
 
@@ -259,7 +259,9 @@ def parse_config():
 def main():
 
     args = parse_config()
-    # TODO (liang): add logging to this based on helpers/utils.py/log_this
+    run_dir, run_id = log_this(args, args.log_dir, args.log_name)
+    args.reward_model_path = os.path.join(run_dir, 'ckpts_reward')
+    os.makedirs(args.reward_model_path, exist_ok=True)
 
     # TODO (max): make seeds work properly
     seed = int(args.seed)
@@ -285,7 +287,7 @@ def main():
     conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
     policy_model = ppo2.learn(env=venv_fn(), network=conv_fn, total_timesteps=0)
     demonstrations, learning_returns, learning_rewards = generate_procgen_demonstrations(venv_fn,
-     policy_model, args.models_dir, eps_per_model = args.num_envs)
+     policy_model, models_dir, eps_per_model = args.num_envs)
     # TODO: why is args.num_envs used as a placeholder for eps_per_model?
 
 

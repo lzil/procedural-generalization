@@ -67,8 +67,8 @@ def main():
     args = parse_config()
     # TODO: make the progress.csv created by logger write into separate place for each
     # experiment, instead of overwriting itself. Or remake logging altogether.
-    LOG_DIR = 'trex/LOGS/TREX_LOG_' + str(args.env_name) + '_numlvl=' + str(args.num_levels)
-    run_dir, run_id = log_this(args, LOG_DIR, args.log_name)
+    log_dir = f'trex/logs/trex_{args.env_name}_nl{args.num_levels}'
+    run_dir, run_id = log_this(args, log_dir, args.log_name)
 
     test_worker_interval = args.test_worker_interval
 
@@ -89,7 +89,7 @@ def main():
 
     log_comm = comm.Split(1 if is_test_worker else 0, 0)
     format_strs = ['csv', 'stdout'] if log_comm.Get_rank() == 0 else []
-    logger.configure(dir=LOG_DIR, format_strs=format_strs)
+    logger.configure(dir=run_dir, format_strs=format_strs)
 
     logger.info("creating environment")
 
