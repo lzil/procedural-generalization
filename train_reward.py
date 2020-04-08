@@ -186,7 +186,7 @@ class RewardTrainer:
                 #print('loss crit', loss_criterion(outputs, labels))
                 #print('l1 reg', l1_reg)
                 
-                loss = loss_criterion(outputs, labels) + l1_reg
+                loss = loss_criterion(outputs, label) + l1_reg
                 loss.backward()
                 optimizer.step()
 
@@ -195,7 +195,7 @@ class RewardTrainer:
                 i+=1
                 #print(item_loss)
                 #print(cum_loss)
-                if i % 1000 == 999:
+                if i % 100 == 99:
                     cum_loss += epoch_loss
                     print("epoch {}, step {}: loss {}".format(epoch, i, cum_loss))
                     print(f'absolute rewards = {abs_rewards.item()}')
@@ -260,6 +260,7 @@ def parse_config():
     parser.add_argument('--log_name', default='', help='specific name for this run')
     parser.add_argument('--models_dir', default = "trex/chaser_model_dir", help="directory that contains checkpoint models for demos")
     parser.add_argument('--num_dems',type=int, default = 12 , help = 'Number of demonstrations to train on')
+    parser.add_argument('--num_iter', type = int, default = 1, help = 'Number of epochs for reward learning')
     args = parser.parse_args()
 
     # TODO (max): change these so they make sense
@@ -269,7 +270,6 @@ def parse_config():
     # (that change the learning rate over time)
     args.lr = 0.00005
     args.weight_decay = 0.0
-    args.num_iter = 500 #maximum num times through training data 
     args.lam_l1=0.0 
     args.converg = .001
     args.stochastic = True
@@ -285,9 +285,8 @@ def main():
     args = parse_config()
     run_dir, run_id = log_this(args, args.log_dir, args.log_name)
     args.reward_model_path = os.path.join(run_dir, 'ckpts_reward')
-    os.makedirs(args.reward_model_path, exist_ok=True)
+    # os.makedirs(args.reward_model_path, exist_ok=True)
 
-    # TODO (max): make seeds work properly
     seed = int(args.seed)
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -338,7 +337,7 @@ def main():
     with torch.no_grad():
         print('true     |predicted')
         for demo in sorted(dems, key = lambda x: x['return']):
-            print(f"{demo['return']:9.2f}|{trainer.predict_traj_return(demo['observations']):9.2f}")
+            print(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}")
 
 
     print("accuracy", trainer.calc_accuracy(training_data))
