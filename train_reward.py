@@ -253,13 +253,13 @@ def parse_config():
     parser.add_argument('--num_levels', type=int, default=0)
     parser.add_argument('--seed', default=0, help="random seed for experiments")
     parser.add_argument('--start_level', type=int, default=0)
-    parser.add_argument('--num_snippets', default=6000, type=int, help="number of short subtrajectories to sample")
+    parser.add_argument('--num_snippets', default=1000, type=int, help="number of short subtrajectories to sample")
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
     parser.add_argument('--reward_model_path', default='trex/reward_model_chaser/test1', help="name and location for learned model params, e.g. ./learned_models/breakout.params")
     parser.add_argument('--log_dir', default='trex', help='general logs directory')
     parser.add_argument('--log_name', default='', help='specific name for this run')
     parser.add_argument('--models_dir', default = "trex/chaser_model_dir", help="directory that contains checkpoint models for demos")
-    parser.add_argument('--num_dems',type=int, default = 12 , help = 'Number of demonstrations to train on')
+    parser.add_argument('--num_dems',type=int, default = 6 , help = 'Number of demonstrations to train on')
     parser.add_argument('--num_iter', type = int, default = 1, help = 'Number of epochs for reward learning')
     args = parser.parse_args()
 
