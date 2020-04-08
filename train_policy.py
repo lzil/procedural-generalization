@@ -2,7 +2,8 @@ import tensorflow as tf
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from baselines.ppo2 import ppo2
+# from baselines.ppo2 import ppo2
+import helpers.baselines_ppo2 as ppo2 # use this for adjusted logging ability
 from baselines.common.models import build_impala_cnn
 from baselines.common.mpi_util import setup_mpi_gpus
 from procgen import ProcgenEnv
