@@ -199,7 +199,6 @@ class RewardTrainer:
                     cum_loss += epoch_loss
                     print("epoch {}, step {}: loss {}".format(epoch, i, cum_loss))
                     print(f'absolute rewards = {abs_rewards.item()}')
-                    # TODO: give this a different name for each log so it doesn't keep overwriting                  
                     torch.save(self.net.state_dict(), os.path.join(self.args.checkpoint_dir, f'reward_{epoch}_{i}.pth'))
                     if (1 - (cum_loss-epoch_loss)/cum_loss) < self.args.converg: #convergence
                         break
