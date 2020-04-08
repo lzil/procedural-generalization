@@ -1,3 +1,6 @@
+import os
+import sys
+
 import tensorflow as tf
 import torch
 import torch.nn as nn
@@ -144,10 +147,11 @@ def main():
         init_fn=None,
         vf_coef=0.5,
         max_grad_norm=0.5,
+        run_id=run_id,
 	load_path = args.load_path,
     )
 
-    model.save(LOG_DIR+'/final_model.parameters')
+    model.save(os.path.join(checkpoint_dir, 'final_model.parameters'))
 
 
 
