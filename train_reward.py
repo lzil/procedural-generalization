@@ -13,13 +13,16 @@ import sys
 
 import tensorflow as tf
 
-from baselines.ppo2 import ppo2
+# from baselines.ppo2 import ppo2
+import helpers.baselines_ppo2 as ppo2 # use this for adjusted logging ability
 from procgen import ProcgenEnv
 from baselines.common.vec_env import VecExtractDictObs
 from baselines.common.models import build_impala_cnn
 
 from helpers.trajectory_collection import ProcgenRunner
 from helpers.utils import *
+
+
 
 import argparse
 
@@ -281,10 +284,8 @@ def parse_config():
 def main():
 
     args = parse_config()
-    run_dir, run_id = log_this(args, args.log_dir, args.log_name)
-    args.checkpoint_dir = os.path.join(run_dir, 'checkpoints')
-    os.makedirs(args.checkpoint_dir, exist_ok=True)
-    sys.exit(0)
+    run_dir, checkpoint_dir, run_id = log_this(args, args.log_dir, args.log_name)
+    args.checkpoint_dir = checkpoint_dir
 
     seed = int(args.seed)
     torch.manual_seed(seed)
@@ -309,7 +310,7 @@ def main():
     #first we initialize the model of the correct shape using ppo.learn for 0 timesteps
     conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
 
-    policy_model = ppo2.learn(env=venv_fn(), network=conv_fn, total_timesteps=0, seed = seed)
+    policy_model = ppo2.learn(env=venv_fn(), network=conv_fn, total_timesteps=0, seed=seed, run_id=run_id)
     dems = generate_procgen_dems(venv_fn, policy_model, args.models_dir, max_ep_len=512, num_dems=args.num_dems)
 
     print('Creating training data ...')

@@ -15,10 +15,10 @@ from baselines import logger
 from mpi4py import MPI
 import argparse
 
-
-
 from helpers.ProxyRewardWrapper import ProxyRewardWrapper
 from helpers.utils import add_yaml_args, log_this
+
+from train_reward import RewardNet
 
 
 def parse_config():
@@ -31,7 +31,7 @@ def parse_config():
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--load_path', type=str, default=None)
-    parser.add_argument('--log_dir', type=str, default='logs')
+    parser.add_argument('--log_dir', type=str, default='trex/logs')
     parser.add_argument('--log_name', type=str, default='')
     parser.add_argument('--reward_model_path', default='trex/reward_model_chaser', help="name and location for learned model params, e.g. ./learned_models/breakout.params")
 
@@ -65,10 +65,7 @@ def parse_config():
 def main():
 
     args = parse_config()
-    # TODO: make the progress.csv created by logger write into separate place for each
-    # experiment, instead of overwriting itself. Or remake logging altogether.
-    log_dir = f'trex/logs/trex_{args.env_name}_nl{args.num_levels}'
-    run_dir, run_id = log_this(args, log_dir, args.log_name)
+    run_dir, checkpoint_dir, run_id = log_this(args, args.log_dir, args.log_name)
 
     test_worker_interval = args.test_worker_interval
 
@@ -89,7 +86,7 @@ def main():
 
     log_comm = comm.Split(1 if is_test_worker else 0, 0)
     format_strs = ['csv', 'stdout'] if log_comm.Get_rank() == 0 else []
-    logger.configure(dir=run_dir, format_strs=format_strs)
+    logger.configure(dir=run_dir, format_strs=format_strs, log_suffix='_' + run_id)
 
     logger.info("creating environment")
 
@@ -104,7 +101,6 @@ def main():
     venv = VecMonitor(venv=venv, filename=None, keep_buf=100)
 
     # load pretrained network
-    from train_reward import RewardNet
     net = RewardNet()
     net.load_state_dict(torch.load(args.reward_model_path, map_location=torch.device('cpu')))
 
