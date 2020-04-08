@@ -37,6 +37,8 @@ def log_this(config, log_dir, log_name=None):
         log_name = run_id
     run_dir = os.path.join(log_dir, log_name)
     os.makedirs(run_dir, exist_ok=True)
+    checkpoint_dir = os.path.join(run_dir, 'checkpoints')
+    os.makedirs(checkpoint_dir, exist_ok=True)
     print(f'Logging to {run_dir}')
     # might want to send stdout here later too
     path_config = os.path.join(run_dir, f'config_{run_id}.json')

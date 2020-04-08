@@ -9,12 +9,12 @@ import time
 import copy
 import os
 import random
+import sys
 
 import tensorflow as tf
 
 from baselines.ppo2 import ppo2
 from procgen import ProcgenEnv
-from baselines.common.vec_env.vec_video_recorder import VecVideoRecorder
 from baselines.common.vec_env import VecExtractDictObs
 from baselines.common.models import build_impala_cnn
 
@@ -200,7 +200,7 @@ class RewardTrainer:
                     print("epoch {}, step {}: loss {}".format(epoch, i, cum_loss))
                     print(f'absolute rewards = {abs_rewards.item()}')
                     # TODO: give this a different name for each log so it doesn't keep overwriting                  
-                    torch.save(self.net.state_dict(), self.args.reward_model_path + '_' + str(epoch) + '_' + str(i))
+                    torch.save(self.net.state_dict(), os.path.join(self.args.checkpoint_dir, f'reward_{epoch}_{i}.pth'))
                     if (1 - (cum_loss-epoch_loss)/cum_loss) < self.args.converg: #convergence
                         break
                     epoch_loss = 0.0
@@ -211,7 +211,7 @@ class RewardTrainer:
 
     # save the final learned model
     def save_model(self):
-        torch.save(self.net.state_dict(), self.args.reward_model_path)
+        torch.save(self.net.state_dict(), os.path.join(self.args.checkpoint_dir, 'reward_final.pth'))
 
     # calculate and return accuracy on entire training set
     def calc_accuracy(self, training_data):
@@ -255,8 +255,7 @@ def parse_config():
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--num_snippets', default=1000, type=int, help="number of short subtrajectories to sample")
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
-    parser.add_argument('--reward_model_path', default='trex/reward_model_chaser/test1', help="name and location for learned model params, e.g. ./learned_models/breakout.params")
-    parser.add_argument('--log_dir', default='trex', help='general logs directory')
+    parser.add_argument('--log_dir', default='trex/logs', help='general logs directory')
     parser.add_argument('--log_name', default='', help='specific name for this run')
     parser.add_argument('--models_dir', default = "trex/chaser_model_dir", help="directory that contains checkpoint models for demos")
     parser.add_argument('--num_dems',type=int, default = 6 , help = 'Number of demonstrations to train on')
@@ -284,15 +283,15 @@ def main():
 
     args = parse_config()
     run_dir, run_id = log_this(args, args.log_dir, args.log_name)
-    args.reward_model_path = os.path.join(run_dir, 'ckpts_reward')
-    # os.makedirs(args.reward_model_path, exist_ok=True)
+    args.checkpoint_dir = os.path.join(run_dir, 'checkpoints')
+    os.makedirs(args.checkpoint_dir, exist_ok=True)
+    sys.exit(0)
 
     seed = int(args.seed)
     torch.manual_seed(seed)
     np.random.seed(seed)
     tf.set_random_seed(seed)
     random.seed(seed)
-
     
     Procgen_fn = lambda: ProcgenEnv(
         num_envs=1,
