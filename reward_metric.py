@@ -27,7 +27,7 @@ def parse_config():
     parser.add_argument('--num_levels', type=int, default=0)
     parser.add_argument('--seed', default=0, help="random seed for experiments")
     parser.add_argument('--start_level', type=int, default=0)
-    parser.add_argument('--num_dems', default=6, type=int, help="number of trajectories to use")
+    parser.add_argument('--num_dems', default=5, type=int, help="number of trajectories to use")
 
     parser.add_argument('--models_dir', default='trex/chaser_model_dir')
     # parser.add_argument('--traj_len')
@@ -69,7 +69,7 @@ def main():
 
         rs.append(r)
 
-    print(r, np.mean(r))
+    print(rs, np.mean(rs))
 
 
 
