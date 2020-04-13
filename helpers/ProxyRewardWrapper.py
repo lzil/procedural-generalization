@@ -5,7 +5,7 @@ from baselines.common.vec_env import VecEnvWrapper
 class ProxyRewardWrapper(VecEnvWrapper):
     """
     This wrapper changes the reward of the provided environment to some function
-    of it's observations
+    of its observations
 
     r_model must be a callable function that takes batch of obervations
     and returns batch of rewards
