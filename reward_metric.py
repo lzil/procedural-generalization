@@ -1,5 +1,7 @@
 import numpy as np
 import torch
+from scipy.stats import pearsonr
+from scipy.stats import spearmanr
 
 from procgen import ProcgenEnv
 from baselines.common.vec_env import VecExtractDictObs
@@ -27,7 +29,8 @@ def parse_config():
     parser.add_argument('--num_levels', type=int, default=0)
     parser.add_argument('--seed', default=0, help="random seed for experiments")
     parser.add_argument('--start_level', type=int, default=0)
-    parser.add_argument('--num_dems', default=5, type=int, help="number of trajectories to use")
+    parser.add_argument('--num_dems', default=20, type=int, help="number of trajectories to use")
+    # todo: save a bunch of test trajectories somewhere so these don't need to be generated from scratch every time
 
     parser.add_argument('--models_dir', default='trex/chaser_model_dir')
     # parser.add_argument('--traj_len')
@@ -43,6 +46,9 @@ def main():
 
     args = parse_config()
 
+    print(f'Evaluating reward model at: {args.reward_path} on {args.num_dems} trajectories.')
+
+    # load environments and generate some number of demonstration trajectories
     procgen_fn_true = lambda: ProcgenEnv(
         num_envs=1,
         env_name=args.env_name,
@@ -57,19 +63,25 @@ def main():
     policy_true = ppo2.learn(env=venv_fn_true(), network=conv_fn, total_timesteps=0, seed=args.seed)
     dems = generate_procgen_dems(venv_fn_true, policy_true, args.models_dir, max_ep_len=512, num_dems=args.num_dems)
 
+    # load learned reward model
     net = RewardNet()
     net.load_state_dict(torch.load(args.reward_path, map_location=torch.device('cpu')))
 
     rs = []
     for dem in dems:
-        r_prediction = net.predict_batch_rewards(dem['observations'])
-        r_true = dem['rewards']
+        r_prediction = np.sum(net.predict_batch_rewards(dem['observations']))
+        r_true = dem['return']
 
-        r = np.corrcoef(r_prediction, r_true)[0,1]
+        rs.append((r_true, r_prediction))
 
-        rs.append(r)
+    # calculate correlations and print them
+    rs_by_var = list(zip(*rs))
+    pearson_r, pearson_p = pearsonr(rs_by_var[0], rs_by_var[1])
+    spearman_r, spearman_p = spearmanr(rs)
 
-    print(rs, np.mean(rs))
+    print(f'Pearson r: {pearson_r}; p-val: {pearson_p}')
+    print(f'Spearman r: {spearman_r}; p-val: {spearman_p}')
+
 
 
 

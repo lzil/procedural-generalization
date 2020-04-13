@@ -293,7 +293,7 @@ def main():
     tf.set_random_seed(seed)
     random.seed(seed)
     
-    Procgen_fn = lambda: ProcgenEnv(
+    procgen_fn = lambda: ProcgenEnv(
         num_envs=1,
         env_name=args.env_name,
         num_levels=args.num_levels,
@@ -301,7 +301,7 @@ def main():
         distribution_mode=args.distribution_mode,
         rand_seed = seed
     )
-    venv_fn = lambda: VecExtractDictObs(Procgen_fn(), "rgb")
+    venv_fn = lambda: VecExtractDictObs(procgen_fn(), "rgb")
     
     # here is where the T-REX procedure begins
 
