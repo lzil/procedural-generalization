@@ -22,7 +22,7 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
-from ..helpers.utils import add_yaml_args, log_this
+from helpers.utils import add_yaml_args, log_this
 
 
 # figure out the right configuration for the run

@@ -2,7 +2,7 @@ playground/
 logs/
 __pycache__/
 Video
-
+train-procgen/
 .DS_Store
 
 *slurm*
