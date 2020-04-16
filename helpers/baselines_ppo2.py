@@ -214,7 +214,7 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
             else:
                 checkdir = osp.join(logger.get_dir(), f'checkpoints_{run_id}')
             os.makedirs(checkdir, exist_ok=True)
-            savepath = osp.join(checkdir, '%.5i'%update)
+            savepath = osp.join(checkdir, '%.5i'%update + '.pth')
             print('Saving to', savepath)
             model.save(savepath)
 

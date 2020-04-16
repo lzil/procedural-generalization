@@ -5,5 +5,7 @@ Video
 train-procgen/
 .DS_Store
 
+*.pth
+
 *slurm*
 
