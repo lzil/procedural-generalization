@@ -265,11 +265,6 @@ def parse_config():
     parser.add_argument('--num_iter', type = int, default = 1, help = 'Number of epochs for reward learning')
     args = parser.parse_args()
 
-    # TODO (max): change these so they make sense
-    # e.g. use some form of l1 regularization, add l2 reg, etc.
-    # use more than 5 epochs (e.g. train until convergence)
-    # there are other things to consider later, e.g. pytorch schedulers
-    # (that change the learning rate over time)
     args.lr = 0.00005
     args.weight_decay = 0.0
     args.lam_l1=0.0 
@@ -319,8 +314,6 @@ def main():
     min_snippet_length = 10 #min length of trajectory for training comparison
     max_snippet_length = 100
     
-    # TODO (anton): this process might be different depending on what the true reward model looks like
-    # e.g. it's not very nice in coinrun
     training_data = create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length)
 
 
