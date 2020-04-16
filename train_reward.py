@@ -42,6 +42,8 @@ def generate_procgen_dems(env_fn, model, model_dir, max_ep_len, num_dems):
             model.load(model_file)
             collector = ProcgenRunner(env_fn, model, max_ep_len)
             dems.extend(collector.collect_episodes(1)) #collects one episode with current model
+            if len(dems) == num_dems:
+            	break
 
     return dems[:num_dems]
 
@@ -178,7 +180,7 @@ class RewardTrainer:
                 #l1_reg = self.args.lam_l1 * abs_rewards
                 #implemented l1 reg using weights, above is alt way?
 
-                l1_reg = torch.tensor(0., requires_grad=True)
+                l1_reg = torch.tensor(0., requires_grad=True, device = self.device)
                 for name, param in self.net.named_parameters():
                     if 'weight' in name:
                         l1_reg = l1_reg + torch.norm(param, 1)
@@ -195,12 +197,11 @@ class RewardTrainer:
 
                 item_loss = loss.item()
                 epoch_loss += item_loss
-                i+=1
                 #print(item_loss)
                 #print(cum_loss)
-                if i % 100 == 99:
+                if i % 1000 == 999:
                     cum_loss += epoch_loss
-                    print("epoch {}, step {}: loss {}".format(epoch, i, cum_loss))
+                    print("epoch {}, step {}: loss {}".format(epoch, i, epoch_loss))
                     print(f'absolute rewards = {abs_rewards.item()}')
                     torch.save(self.net.state_dict(), os.path.join(self.args.checkpoint_dir, f'reward_{epoch}_{i}.pth'))
                     if (1 - (cum_loss-epoch_loss)/cum_loss) < self.args.converg: #convergence
@@ -264,11 +265,6 @@ def parse_config():
     parser.add_argument('--num_iter', type = int, default = 1, help = 'Number of epochs for reward learning')
     args = parser.parse_args()
 
-    # TODO (max): change these so they make sense
-    # e.g. use some form of l1 regularization, add l2 reg, etc.
-    # use more than 5 epochs (e.g. train until convergence)
-    # there are other things to consider later, e.g. pytorch schedulers
-    # (that change the learning rate over time)
     args.lr = 0.00005
     args.weight_decay = 0.0
     args.lam_l1=0.0 
@@ -318,8 +314,6 @@ def main():
     min_snippet_length = 10 #min length of trajectory for training comparison
     max_snippet_length = 100
     
-    # TODO (anton): this process might be different depending on what the true reward model looks like
-    # e.g. it's not very nice in coinrun
     training_data = create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length)
 
 
