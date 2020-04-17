@@ -10,7 +10,7 @@ parser.add_argument('--env_name', type=str, default='chaser')
 parser.add_argument('--distribution_mode', type=str, default='hard', choices=["easy", "hard", "exploration", "memory", "extreme"])
 parser.add_argument('--num_levels', type=int, default=1)
 parser.add_argument('--start_level', type=int, default=1)
-parser.add_argument('--max_steps', type=int, default=500)
+parser.add_argument('--max_steps', type=int, default=10000)
 parser.add_argument('--num_runs', type = int, default=128)
 parser.add_argument('--load_path', type=str, default = 'trex/reward_model_chaser',
     help = 'path to the model')
@@ -38,5 +38,6 @@ from helpers.trajectory_collection import ProcgenRunner
 
 collector = ProcgenRunner(env_fn, model, args.max_steps)
 eps = collector.collect_episodes(args.num_runs)
+print(f'max ep_len = {np.max([ep["length"] for ep in eps])}')
 print(f'Mean return ={np.mean([ep["return"] for ep in eps])}')
 print('All returns: \n',[ep['return'] for ep in eps])

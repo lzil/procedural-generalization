@@ -37,15 +37,13 @@ def generate_procgen_dems(env_fn, model, model_dir, max_ep_len, num_dems):
     """
 
     dems = []
-    while len(dems) < num_dems:
-        for model_file in os.scandir(model_dir):
-            model.load(model_file)
-            collector = ProcgenRunner(env_fn, model, max_ep_len)
-            dems.extend(collector.collect_episodes(1)) #collects one episode with current model
-            if len(dems) == num_dems:
-            	break
+    model_files = [os.path.join(model_dir, f) for f in os.listdir(model_dir)]
+    for model_file in np.random.choice(model_files, num_dems):
+        model.load(model_file)
+        collector = ProcgenRunner(env_fn, model, max_ep_len)
+        dems.extend(collector.collect_episodes(1)) #collects one episode with current model
 
-    return dems[:num_dems]
+    return dems
 
 def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length):
     """
@@ -203,7 +201,8 @@ class RewardTrainer:
                     cum_loss += epoch_loss
                     print("epoch {}, step {}: loss {}".format(epoch, i, epoch_loss))
                     print(f'absolute rewards = {abs_rewards.item()}')
-                    torch.save(self.net.state_dict(), os.path.join(self.args.checkpoint_dir, f'reward_{epoch}_{i}.pth'))
+                    #torch.save(self.net.state_dict(), os.path.join(self.args.checkpoint_dir, f'reward_{epoch}_{i}.pth'))
+                    self.save_model()
                     if (1 - (cum_loss-epoch_loss)/cum_loss) < self.args.converg: #convergence
                         break
                     epoch_loss = 0.0
@@ -250,7 +249,7 @@ def parse_config():
     parser = argparse.ArgumentParser(description='Default arguments to initialize and load the model and env')
     parser.add_argument('-c', '--config', type=str, default=None)
 
-    parser.add_argument('--env_name', type=str, default='chaser')
+    parser.add_argument('--env_name', type=str, default='starpilot')
     parser.add_argument('--distribution_mode', type=str, default='hard',
         choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=0)
@@ -258,13 +257,20 @@ def parse_config():
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--num_snippets', default=1000, type=int, help="number of short subtrajectories to sample")
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
-    parser.add_argument('--log_dir', default='trex/logs', help='general logs directory')
+    parser.add_argument('--log_dir', default='trex/reward_models', help='general logs directory')
     parser.add_argument('--log_name', default='', help='specific name for this run')
-    parser.add_argument('--models_dir', default = "trex/chaser_model_dir", help="directory that contains checkpoint models for demos")
+    parser.add_argument('--models_dir', default = "trex/policy_models/starpilot", help="directory that contains checkpoint models for demos")
     parser.add_argument('--num_dems',type=int, default = 6 , help = 'Number of demonstrations to train on')
+    parser.add_argument('--max_dem_len',type=int, default = 3000 , help = 'Maximimum exprert demonstration length')
+   
     parser.add_argument('--num_iter', type = int, default = 1, help = 'Number of epochs for reward learning')
     args = parser.parse_args()
 
+    # TODO (max): change these so they make sense
+    # e.g. use some form of l1 regularization, add l2 reg, etc.
+    # use more than 5 epochs (e.g. train until convergence)
+    # there are other things to consider later, e.g. pytorch schedulers
+    # (that change the learning rate over time)
     args.lr = 0.00005
     args.weight_decay = 0.0
     args.lam_l1=0.0 
@@ -289,7 +295,7 @@ def main():
     tf.set_random_seed(seed)
     random.seed(seed)
     
-    procgen_fn = lambda: ProcgenEnv(
+    Procgen_fn = lambda: ProcgenEnv(
         num_envs=1,
         env_name=args.env_name,
         num_levels=args.num_levels,
@@ -297,7 +303,7 @@ def main():
         distribution_mode=args.distribution_mode,
         rand_seed = seed
     )
-    venv_fn = lambda: VecExtractDictObs(procgen_fn(), "rgb")
+    venv_fn = lambda: VecExtractDictObs(Procgen_fn(), "rgb")
     
     # here is where the T-REX procedure begins
 
@@ -307,13 +313,15 @@ def main():
     conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
 
     policy_model = ppo2.learn(env=venv_fn(), network=conv_fn, total_timesteps=0, seed=seed, run_id=run_id)
-    dems = generate_procgen_dems(venv_fn, policy_model, args.models_dir, max_ep_len=512, num_dems=args.num_dems)
+    dems = generate_procgen_dems(venv_fn, policy_model, args.models_dir, max_ep_len=args.max_dem_len, num_dems=args.num_dems)
 
     print('Creating training data ...')
     num_snippets = args.num_snippets
-    min_snippet_length = 10 #min length of trajectory for training comparison
+    min_snippet_length = 20 #min length of tracjectory for training comparison
     max_snippet_length = 100
     
+    # TODO (anton): this process might be different depending on what the true reward model looks like
+    # e.g. it's not very nice in coinrun
     training_data = create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length)
 
 

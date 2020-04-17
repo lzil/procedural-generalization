@@ -36,10 +36,10 @@ def parse_config():
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--load_path', type=str, default=None)
-    parser.add_argument('--log_dir', type=str, default='logs')
+    parser.add_argument('--log_dir', type=str, default='trex/experts')
     parser.add_argument('--log_name', type=str, default='')
     # logs every num_envs * nsteps
-    parser.add_argument('--log_interval', type=int, default=20)
+    parser.add_argument('--log_interval', type=int, default=5)
     parser.add_argument('--save_interval', type=int, default=20)
 
     parser.add_argument('--num_envs', type=int, default=64)
@@ -69,7 +69,7 @@ def main():
 
     # to log the results consistently
     LOG_DIR = os.path.join(args.log_dir, str(args.num_levels), args.env_name)
-    run_dir,ckpt_dir, run_id = log_this(args, LOG_DIR, args.log_name)
+    run_dir, ckpt_dir, run_id = log_this(args, LOG_DIR, args.log_name)
 
     # mpi work
     test_worker_interval = args.test_worker_interval
@@ -87,7 +87,7 @@ def main():
 
     log_comm = comm.Split(1 if is_test_worker else 0, 0)
     format_strs = ['csv', 'stdout'] if log_comm.Get_rank() == 0 else []
-    logger.configure(dir=LOG_DIR, format_strs=format_strs)
+    logger.configure(dir=run_dir, format_strs=format_strs, log_suffix='_' + run_id)
 
     logger.info("creating environment")
     venv = ProcgenEnv(

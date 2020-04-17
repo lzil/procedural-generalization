@@ -1,5 +1,7 @@
 import numpy as np
 import torch
+import pandas as pd 
+import pickle
 from scipy.stats import pearsonr
 from scipy.stats import spearmanr
 
@@ -23,7 +25,7 @@ def parse_config():
     parser.add_argument('-c', '--config', type=str, default=None)
     parser.add_argument('--reward_path', type=str, default='trex/logs/test_metric/checkpoints_452399/reward_final.pth')
 
-    parser.add_argument('--env_name', type=str, default='chaser')
+    parser.add_argument('--env_name', type=str, default='starpilot')
     parser.add_argument('--distribution_mode', type=str, default='hard',
         choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=0)
@@ -48,21 +50,18 @@ def main():
 
     print(f'Evaluating reward model at: {args.reward_path} on {args.num_dems} trajectories.')
 
-    # load environments and generate some number of demonstration trajectories
-    procgen_fn_true = lambda: ProcgenEnv(
-        num_envs=1,
-        env_name=args.env_name,
-        num_levels=args.num_levels,
-        start_level=args.start_level,
-        distribution_mode=args.distribution_mode,
-        rand_seed = args.seed
-    )
-    venv_fn_true = lambda: VecExtractDictObs(procgen_fn_true(), "rgb")
+    
+    #read the demo infos, see first 5 entries
+    demo_infos = pd.read_csv('trex/demos/'+args.env_name+'_demo_infos.csv', index_col=0)
+    print(demo_infos.head())
 
-    conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
-    policy_true = ppo2.learn(env=venv_fn_true(), network=conv_fn, total_timesteps=0, seed=args.seed)
-    dems = generate_procgen_dems(venv_fn_true, policy_true, args.models_dir, max_ep_len=512, num_dems=args.num_dems)
-
+    #unpickle just the entries where return is more then 10
+    #append them to the dems list (100 dems)
+    dems = []
+    for path in demo_infos['path'][:100]:
+        dems.append(pickle.load(open(path, "rb")))
+    
+        
     # load learned reward model
     net = RewardNet()
     net.load_state_dict(torch.load(args.reward_path, map_location=torch.device('cpu')))
