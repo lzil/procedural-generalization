@@ -111,7 +111,8 @@ def main():
     logger.info("creating tf session")
     setup_mpi_gpus()
     config = tf.ConfigProto()
-    config.gpu_options.allow_growth = True #pylint: disable=E1101
+    
+    config.gpu_options.per_process_gpu_memory_fraction = 0.2
     sess = tf.Session(config=config)
     sess.__enter__()
 
@@ -142,5 +143,6 @@ def main():
         load_path=args.load_path
     )
 
+    sess.close()
 if __name__ == '__main__':
     main()

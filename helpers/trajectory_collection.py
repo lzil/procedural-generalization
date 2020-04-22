@@ -77,7 +77,21 @@ class ProcgenRunner:
         return np.asarray(batch[:n_episodes])
 
 
+def generate_procgen_dems(env_fn, model, model_dir, max_ep_len, num_dems):
+    
+    """
+    loop through models in model_dir and sample demonstrations
+    until num_dems demonstrations is collected
+    """
 
+    dems = []
+    model_files = [os.path.join(model_dir, f) for f in os.listdir(model_dir)]
+    for model_file in np.random.choice(model_files, num_dems):
+        model.load(model_file)
+        collector = ProcgenRunner(env_fn, model, max_ep_len)
+        dems.extend(collector.collect_episodes(1)) #collects one episode with current model
+
+    return dems
         
 
 

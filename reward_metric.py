@@ -23,7 +23,7 @@ def parse_config():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', type=str, default=None)
-    parser.add_argument('--reward_path', type=str, default='trex/logs/test_metric/checkpoints_452399/reward_final.pth')
+    parser.add_argument('--reward_path', type=str, default='trex/reward_models/starpilot10/checkpoints_788428/reward_final.pth')
 
     parser.add_argument('--env_name', type=str, default='starpilot')
     parser.add_argument('--distribution_mode', type=str, default='hard',
@@ -53,14 +53,14 @@ def main():
     
     #read the demo infos, see first 5 entries
     demo_infos = pd.read_csv('trex/demos/'+args.env_name+'_demo_infos.csv', index_col=0)
-    print(demo_infos.head())
+    # print(demo_infos.head())
 
     #unpickle just the entries where return is more then 10
     #append them to the dems list (100 dems)
     dems = []
-    for path in demo_infos['path'][:100]:
+    for path in demo_infos[demo_infos['return'] > 20]['path'][:500]:
         dems.append(pickle.load(open(path, "rb")))
-    
+    print(len(dems))
         
     # load learned reward model
     net = RewardNet()

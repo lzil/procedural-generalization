@@ -1,6 +1,9 @@
 # adapted heavily from https://github.com/hiwonjoon/ICML2019-TREX/blob/master/atari/LearnAtariReward.py
 
 import numpy as np
+import pandas as pd
+import csv
+import pickle
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -19,7 +22,7 @@ from procgen import ProcgenEnv
 from baselines.common.vec_env import VecExtractDictObs
 from baselines.common.models import build_impala_cnn
 
-from helpers.trajectory_collection import ProcgenRunner
+from helpers.trajectory_collection import ProcgenRunner, generate_procgen_dems
 from helpers.utils import *
 
 
@@ -28,22 +31,6 @@ import argparse
 
 #traj_j in learn_reward and calc_accuracy into a function
 
-
-def generate_procgen_dems(env_fn, model, model_dir, max_ep_len, num_dems):
-    
-    """
-    loop through models in model_dir and sample demonstrations
-    until num_dems demonstrations is collected
-    """
-
-    dems = []
-    model_files = [os.path.join(model_dir, f) for f in os.listdir(model_dir)]
-    for model_file in np.random.choice(model_files, num_dems):
-        model.load(model_file)
-        collector = ProcgenRunner(env_fn, model, max_ep_len)
-        dems.extend(collector.collect_episodes(1)) #collects one episode with current model
-
-    return dems
 
 def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length):
     """
@@ -60,15 +47,19 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
     assert min_snippet_length < min(demo_lens), "One of the trajectories is too short"
     
     training_data = []
-    
+    validation_data = []
+    # pick 2 of demos to be validation demos
+    val_idx = np.random.choice(len(dems), 2 , replace = False)
     for n in range(num_snippets):
 
         #pick two random demos
-        two_dems = random.sample(dems, 2)
+        i1, i2 = np.random.choice(len(dems) ,2, replace = False) 
+        is_validation  = (i1 in val_idx) or (i2 in val_idx)   
         # d1['return'] <= d2['return']
-        d0, d1 = sorted(two_dems, key = lambda x: x['return'])
-        #create random snippets
+        d0, d1 = sorted([dems[i1], dems[i2]], key = lambda x: x['return'])
         
+        #create random snippets
+
         #first adjust max stippet length such that we can pick
         #the later starting clip from the better trajectory
         cur_min_len = min(d0['length'], d1['length'])
@@ -83,14 +74,19 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
         clip0  = d0['observations'][d0_start : d0_start+cur_len]
         clip1  = d1['observations'][d1_start : d1_start+cur_len]
 
-        # randomize label so reward learning model won't learn heuristic
-        label = np.random.randint(2)
-        if label:
-            training_data.append(([clip0, clip1], np.array([1])))
+        if is_validation:
+            validation_data.append(([clip0, clip1], np.array([1])))
         else:
-            training_data.append(([clip1, clip0], np.array([0])))
+            training_data.append(([clip0, clip1], np.array([1])))
 
-    return np.array(training_data)
+        # # randomize label so reward learning model won't learn heuristic
+        # label = np.random.randint(2)
+        # if label:
+        #     training_data.append(([clip0, clip1], np.array([1])))
+        # else:
+        #     training_data.append(([clip1, clip0], np.array([0])))
+    print(len(training_data), len(validation_data))
+    return np.array(training_data), np.array(validation_data)
 
 
 # actual reward learning network
@@ -146,14 +142,17 @@ class RewardTrainer:
     # Train the network
     def learn_reward(self, training_data):
         loss_criterion = nn.CrossEntropyLoss()
-
         optimizer = optim.Adam(self.net.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
-                  
-        cum_loss = 0.0
-        epoch_loss = 0.0
-        for epoch in range(self.args.num_iter):
-            np.random.shuffle(training_data)
-            for i, ([traj_i, traj_j], label) in enumerate(training_data):
+        
+        training_set, validation_set = training_data
+
+        max_val_acc = 0 
+        eps_no_max = 0
+        for epoch in range(self.args.num_epochs):
+            epoch_loss = 0
+            np.random.shuffle(training_set)
+            #each epoch consists of 5000 updates - NOT passing through whole test set.
+            for i, ([traj_i, traj_j], label) in enumerate(training_set[:5000]):
 
                 traj_i = torch.from_numpy(traj_i).float().to(self.device)
                 traj_j = torch.from_numpy(traj_j).float().to(self.device)
@@ -163,20 +162,13 @@ class RewardTrainer:
 
                 #forward + backward + optimize
                 outputs, abs_rewards = self.net.forward(traj_i, traj_j)
-                #print('outputs', outputs)
-                #print('abs_rewards', abs_rewards)
+
                 outputs = outputs.unsqueeze(0)
-                #print('outputs unsqueezed', outputs)
-                #print('labels', labels)
-                # TODO: confirm the dimensionality here is correct. not totally sure
-                #looks good
 
                 # TODO: consider l2 regularization?
                 #included with the optimizer weight_decay value
                 #https://pytorch.org/docs/stable/_modules/torch/optim/adam.html#Adam 
-                
-                #l1_reg = self.args.lam_l1 * abs_rewards
-                #implemented l1 reg using weights, above is alt way?
+
 
                 l1_reg = torch.tensor(0., requires_grad=True, device = self.device)
                 for name, param in self.net.named_parameters():
@@ -184,7 +176,7 @@ class RewardTrainer:
                         l1_reg = l1_reg + torch.norm(param, 1)
                 #print('l1 reg 1', l1_reg)
                 #print('lam', self.args.lam_l1)
-                l1_reg = l1_reg * self.args.lam_l1
+                l1_reg = abs_rewards * self.args.lam_l1
 
                 #print('loss crit', loss_criterion(outputs, labels))
                 #print('l1 reg', l1_reg)
@@ -195,20 +187,22 @@ class RewardTrainer:
 
                 item_loss = loss.item()
                 epoch_loss += item_loss
-                #print(item_loss)
-                #print(cum_loss)
-                if i % 1000 == 999:
-                    cum_loss += epoch_loss
-                    print("epoch {}, step {}: loss {}".format(epoch, i, epoch_loss))
-                    print(f'absolute rewards = {abs_rewards.item()}')
-                    #torch.save(self.net.state_dict(), os.path.join(self.args.checkpoint_dir, f'reward_{epoch}_{i}.pth'))
-                    self.save_model()
-                    if (1 - (cum_loss-epoch_loss)/cum_loss) < self.args.converg: #convergence
-                        break
-                    epoch_loss = 0.0
+                
+            val_acc = self.calc_accuracy(validation_set[:1000]) #keep validation set under 1000 samples
+            print(f"epoch : {epoch},  loss : {epoch_loss:6.2f}, val accuracy : {val_acc:6.4f}, abs_rewards : {abs_rewards.item():5.2f}")
 
-            # TODO (max): might want to calculate absolute accuracy every epoch or so
+            if val_acc > max_val_acc:
+                self.save_model()
+                max_val_acc = val_acc
+                eps_no_max = 0
+            else:
+                eps_no_max += 1
 
+            #Early stopping
+            if eps_no_max >= self.args.patience:
+                break
+                print(f'Early stopping after epoch {epoch}')
+            
         print("finished training")
 
     # save the final learned model
@@ -259,22 +253,18 @@ def parse_config():
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
     parser.add_argument('--log_dir', default='trex/reward_models', help='general logs directory')
     parser.add_argument('--log_name', default='', help='specific name for this run')
-    parser.add_argument('--models_dir', default = "trex/policy_models/starpilot", help="directory that contains checkpoint models for demos")
+    parser.add_argument('--demo_infos', default = 'trex/demos/starpilot_easy_demo_infos.csv',
+     help="path to csv with trajectory infos")
     parser.add_argument('--num_dems',type=int, default = 6 , help = 'Number of demonstrations to train on')
     parser.add_argument('--max_dem_len',type=int, default = 3000 , help = 'Maximimum exprert demonstration length')
    
-    parser.add_argument('--num_iter', type = int, default = 1, help = 'Number of epochs for reward learning')
+    parser.add_argument('--num_epochs', type = int, default = 20, help = 'Number of epochs for reward learning')
     args = parser.parse_args()
 
-    # TODO (max): change these so they make sense
-    # e.g. use some form of l1 regularization, add l2 reg, etc.
-    # use more than 5 epochs (e.g. train until convergence)
-    # there are other things to consider later, e.g. pytorch schedulers
-    # (that change the learning rate over time)
     args.lr = 0.00005
     args.weight_decay = 0.0
-    args.lam_l1=0.0 
-    args.converg = .001
+    args.lam_l1=0
+    args.patience = 2
     args.stochastic = True
 
     if args.config is not None:
@@ -282,6 +272,18 @@ def parse_config():
 
     return args
 
+def store_model(model, args):
+    model_path = os.path.join('trex/reward_models', str(time.time()) + '.rm')
+
+    with open(model_path, 'w') as f:
+        
+        fnames = ['first_name', 'last_name']
+        writer = csv.DictWriter(f, fieldnames=fnames)    
+
+        writer.writeheader()
+        writer.writerow({'first_name' : 'John', 'last_name': 'Smith'})
+        writer.writerow({'first_name' : 'Robert', 'last_name': 'Brown'})
+        writer.writerow({'first_name' : 'Julia', 'last_name': 'Griffin'})
 
 def main():
 
@@ -291,6 +293,8 @@ def main():
 
     seed = int(args.seed)
     torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic=True
     np.random.seed(seed)
     tf.set_random_seed(seed)
     random.seed(seed)
@@ -307,14 +311,16 @@ def main():
     
     # here is where the T-REX procedure begins
 
-    # collect a bunch of dems from trained models
-    print('Generating demonstrations ...')
-    #first we initialize the model of the correct shape using ppo.learn for 0 timesteps
-    conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
 
-    policy_model = ppo2.learn(env=venv_fn(), network=conv_fn, total_timesteps=0, seed=seed, run_id=run_id)
-    dems = generate_procgen_dems(venv_fn, policy_model, args.models_dir, max_ep_len=args.max_dem_len, num_dems=args.num_dems)
+    demo_infos = pd.read_csv(args.demo_infos, index_col=0)
 
+
+    #unpickle just the entries where return is more then 10
+    #append them to the dems list (100 dems)
+    dems = []
+    for path in np.random.choice(demo_infos['path'], args.num_dems):
+        dems.append(pickle.load(open(path, "rb")))
+    
     print('Creating training data ...')
     num_snippets = args.num_snippets
     min_snippet_length = 20 #min length of tracjectory for training comparison
@@ -322,7 +328,7 @@ def main():
     
     # TODO (anton): this process might be different depending on what the true reward model looks like
     # e.g. it's not very nice in coinrun
-    training_data = create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length)
+    training_data= create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length)
 
 
     # train a reward network using the dems collected earlier and save it
@@ -341,7 +347,7 @@ def main():
             print(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}")
 
 
-    print("accuracy", trainer.calc_accuracy(training_data))
+    print("Final train set accuracy", trainer.calc_accuracy(training_data[0]))
 
 
 if __name__=="__main__":
