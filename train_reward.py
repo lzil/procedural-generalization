@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import csv
+import copy
 import pickle
 import torch
 import torch.nn as nn
@@ -138,7 +139,7 @@ class RewardTrainer:
     def __init__(self, args, device):
         self.device = device
         self.net = RewardNet().to(device)
-
+        self.best_model = copy.deepcopy(self.net.state_dict())
         self.args = args
 
     # Train the network
@@ -172,16 +173,7 @@ class RewardTrainer:
                 #https://pytorch.org/docs/stable/_modules/torch/optim/adam.html#Adam 
 
 
-                l1_reg = torch.tensor(0., requires_grad=True, device = self.device)
-                for name, param in self.net.named_parameters():
-                    if 'weight' in name:
-                        l1_reg = l1_reg + torch.norm(param, 1)
-                #print('l1 reg 1', l1_reg)
-                #print('lam', self.args.lam_l1)
                 l1_reg = abs_rewards * self.args.lam_l1
-
-                #print('loss crit', loss_criterion(outputs, labels))
-                #print('l1 reg', l1_reg)
                 
                 loss = loss_criterion(outputs, label) + l1_reg
                 loss.backward()
@@ -202,18 +194,22 @@ class RewardTrainer:
 
             #Early stopping
             if eps_no_max >= self.args.patience:
-                break
                 print(f'Early stopping after epoch {epoch}')
-            
+                self.net.load_state_dict(self.best_model)  #loading the model with the best validation accuracy
+                break
+                
+
         print("finished training")
-        return self.net.state_dict()
+        return self.best_model
 
     # save the final learned model
     def save_model(self):
         torch.save(self.net.state_dict(), os.path.join(self.args.checkpoint_dir, 'reward_final.pth'))
+        self.best_model = copy.deepcopy(self.net.state_dict())
 
     # calculate and return accuracy on entire training set
     def calc_accuracy(self, training_data):
+
         loss_criterion = nn.CrossEntropyLoss()
         num_correct = 0.
         with torch.no_grad():
@@ -353,15 +349,12 @@ def main():
     max_demo_length = max([demo['length'] for demo in dems])
 
 
-
-
     print('Creating training data ...')
     num_snippets = args.num_snippets
     min_snippet_length = 20 #min length of tracjectory for training comparison
     max_snippet_length = 100
-    
-    # TODO (anton): this process might be different depending on what the true reward model looks like
-    # e.g. it's not very nice in coinrun
+
+
     training_data= create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length)
 
 
