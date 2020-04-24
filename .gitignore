@@ -1,9 +1,14 @@
 playground/
 logs/
+demos/
 __pycache__/
+.DS_Store
+
 Video
 train-procgen/
-.DS_Store
+
+reward_models/
+policy_models/
 
 *.pth
 

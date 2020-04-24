@@ -24,7 +24,7 @@ def parse_config():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', type=str, default=None)
     parser.add_argument('--reward_path', type=str, default='trex/logs/test_metric/checkpoints_452399/reward_final.pth')
-
+    # trex/reward_models/reward_models_hard/starpilot40/checkpoints_799713/reward_final.pth
     parser.add_argument('--env_name', type=str, default='starpilot')
     parser.add_argument('--distribution_mode', type=str, default='hard',
         choices=["easy", "hard", "exploration", "memory", "extreme"])
@@ -82,6 +82,34 @@ def main():
     print(f'Spearman r: {spearman_r}; p-val: {spearman_p}')
 
 
+def get_corr_with_ground(reward_path, env_name):
+    #read the demo infos, see first 5 entries
+    demo_infos = pd.read_csv('trex/demos/'+env_name+'_demo_infos.csv', index_col=0)
+
+    #unpickle just the entries where return is more then 10
+    #append them to the dems list (100 dems)
+    dems = []
+    for path in demo_infos['path'][:100]:
+        dems.append(pickle.load(open(path, "rb")))
+    
+        
+    # load learned reward model
+    net = RewardNet()
+    net.load_state_dict(torch.load(reward_path, map_location=torch.device('cpu')))
+
+    rs = []
+    for dem in dems:
+        r_prediction = np.sum(net.predict_batch_rewards(dem['observations']))
+        r_true = dem['return']
+
+        rs.append((r_true, r_prediction))
+
+    # calculate correlations and print them
+    rs_by_var = list(zip(*rs))
+    pearson_r, pearson_p = pearsonr(rs_by_var[0], rs_by_var[1])
+    spearman_r, spearman_p = spearmanr(rs)
+
+    return (pearson_r, spearman_r)
 
 
 if __name__ == '__main__':
