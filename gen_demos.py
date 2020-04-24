@@ -2,9 +2,12 @@ import numpy as np
 import torch
 import pickle
 import pandas as pd 
+import csv
 import os
 import time
-
+import tensorflow as tf
+tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 from procgen import ProcgenEnv
 from baselines.common.vec_env import VecExtractDictObs
@@ -13,7 +16,7 @@ from baselines.common.models import build_impala_cnn
 import pdb
 import argparse
 
-from train_reward import generate_procgen_dems
+from helpers.trajectory_collection import generate_procgen_dems
 
 import helpers.baselines_ppo2 as ppo2
 
@@ -32,44 +35,55 @@ parser.add_argument('--models_dir', default='trex/experts/0/starpilot/060217/che
 
 args = parser.parse_args()
 
-args.seed = np.random.randint(10000)
-print(args.seed)
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+sess = tf.Session(config=config)
 
-# load environments and generate some number of demonstration trajectories
-procgen_fn_true = lambda: ProcgenEnv(
-    num_envs=1,
-    env_name=args.env_name,
-    num_levels=args.num_levels,
-    start_level=args.start_level,
-    distribution_mode=args.distribution_mode,
-    rand_seed = args.seed
-)
-venv_fn_true = lambda: VecExtractDictObs(procgen_fn_true(), "rgb")
+with sess.as_default():
+    # load environments and generate some number of demonstration trajectories
+    procgen_fn_true = lambda: ProcgenEnv(
+        num_envs=1,
+        env_name=args.env_name,
+        num_levels=args.num_levels,
+        start_level=args.start_level,
+        distribution_mode=args.distribution_mode,
+    )
+    venv_fn_true = lambda: VecExtractDictObs(procgen_fn_true(), "rgb")
 
-conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
-policy_true = ppo2.learn(env=venv_fn_true(), network=conv_fn, total_timesteps=0, seed=args.seed)
+    conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
+    policy_true = ppo2.learn(env=venv_fn_true(), network=conv_fn, total_timesteps=0)
 
 
-demo_dir = 'trex/demos/' + args.env_name +'_' + args.distribution_mode
-os.makedirs(demo_dir, exist_ok=True)
+    demo_dir = 'trex/demos/demo_files'
+    os.makedirs(demo_dir, exist_ok=True)
 
-try: 
-    demo_infos = pd.read_csv(demo_dir+'_demo_infos.csv', index_col=0)
-except:
-    demo_infos = pd.DataFrame(columns =['path','length', 'return'])
+    # try: 
+    #     demo_infos = pd.read_csv('trex/demos/demo_infos.csv', index_col=0)
+    # except:
+    #     demo_infos = pd.DataFrame(columns =['path','env_name','mode','length', 'return'])
 
-print(len(demo_infos))
+    # print(len(demo_infos))
+    info_path = 'trex/demos/demo_infos.csv'
+    file_exists = os.path.exists(info_path)
 
-num_generated = 0
-while num_generated < args.num_dems:
-    dems = generate_procgen_dems(venv_fn_true, policy_true, args.models_dir, max_ep_len=10000, num_dems=20)
-    
-    for demo in dems:
-        demo['path'] = os.path.join(demo_dir, str(time.time()) + '.demo')
-        pickle.dump(demo, open(demo['path'], 'wb'))
-    
-    demo_infos = demo_infos.append(pd.DataFrame(dems, columns =['path','length', 'return']) )
-    demo_infos.reset_index(drop = True)
-    demo_infos.to_csv(demo_dir+'_demo_infos.csv')
-    num_generated += 20
-    print(num_generated, ' collected')
+    with open (info_path, 'a') as csvfile:
+        headers = ['path','env_name','mode','length', 'return']
+        writer = csv.DictWriter(csvfile, fieldnames=headers, extrasaction = 'ignore')
+
+        if not file_exists:
+            writer.writeheader()
+
+        num_generated = 0
+        while num_generated < args.num_dems:
+            dems = generate_procgen_dems(venv_fn_true, policy_true, args.models_dir, max_ep_len=10000, num_dems=10)
+            for demo in dems:
+                demo['env_name'] = args.env_name
+                demo['mode'] = args.distribution_mode
+                demo['path'] = os.path.join(demo_dir, str(time.time()) + '.demo')
+                pickle.dump(demo, open(demo['path'], 'wb'))
+
+            writer.writerows(dems)
+            num_generated += 10
+            print(num_generated, ' collected')
+            del dems
+

@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import os
 
 
 class ProcgenRunner:
@@ -22,11 +23,13 @@ class ProcgenRunner:
         self.obs = venv.reset()
         self.nenv = nenv = venv.num_envs if hasattr(venv, 'num_envs') else 1
         self.dones = [False for _ in range(nenv)]
+        done_once = np.array(self.dones)
         # Here, we init the lists that will contain the mb of experiences
         mb_obs, mb_rewards, mb_actions, mb_values, mb_dones, mb_neglogpacs = [],[],[],[],[],[]
+
         mb_states = self.states
         epinfos = []
-        # For n in range number of steps
+
         for _ in range(self.nsteps):
             actions, values, self.states, neglogpacs = self.model.step(self.obs, S=self.states, M=self.dones)
             mb_obs.append(self.obs.copy())
@@ -34,6 +37,7 @@ class ProcgenRunner:
             mb_values.append(values)
             mb_neglogpacs.append(neglogpacs)
             mb_dones.append(self.dones)
+            done_once = done_once | np.array(self.dones)
 
             # Take actions in env and look the results
             # Infos contains a ton of useful informations
@@ -42,6 +46,12 @@ class ProcgenRunner:
                 maybeepinfo = info.get('episode')
                 if maybeepinfo: epinfos.append(maybeepinfo)
             mb_rewards.append(rewards)
+
+            #stop stepping as soon as each environment in the 
+            #batch have completed at least one episode
+            if all(done_once):
+                break
+
         #batch of steps to batch of rollouts
         mb_obs = np.asarray(mb_obs, dtype=self.obs.dtype)
         mb_rewards = np.asarray(mb_rewards, dtype=np.float32)
@@ -90,7 +100,7 @@ def generate_procgen_dems(env_fn, model, model_dir, max_ep_len, num_dems):
         model.load(model_file)
         collector = ProcgenRunner(env_fn, model, max_ep_len)
         dems.extend(collector.collect_episodes(1)) #collects one episode with current model
-
+    
     return dems
         
 

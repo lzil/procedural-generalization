@@ -29,8 +29,6 @@ from helpers.utils import *
 
 import argparse
 
-#traj_j in learn_reward and calc_accuracy into a function
-
 
 def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length):
     """
@@ -50,7 +48,8 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
     validation_data = []
     # pick 2 of demos to be validation demos
     val_idx = np.random.choice(len(dems), 2 , replace = False)
-    for n in range(num_snippets):
+
+    while len(training_data) < num_snippets:
 
         #pick two random demos
         i1, i2 = np.random.choice(len(dems) ,2, replace = False) 
@@ -79,13 +78,16 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
         else:
             training_data.append(([clip0, clip1], np.array([1])))
 
+
+        ### This doesn't make any difference 
+
         # # randomize label so reward learning model won't learn heuristic
         # label = np.random.randint(2)
         # if label:
         #     training_data.append(([clip0, clip1], np.array([1])))
         # else:
         #     training_data.append(([clip1, clip0], np.array([0])))
-    print(len(training_data), len(validation_data))
+
     return np.array(training_data), np.array(validation_data)
 
 
@@ -148,7 +150,7 @@ class RewardTrainer:
 
         max_val_acc = 0 
         eps_no_max = 0
-        for epoch in range(self.args.num_epochs):
+        for epoch in range(self.args.max_num_epochs):
             epoch_loss = 0
             np.random.shuffle(training_set)
             #each epoch consists of 5000 updates - NOT passing through whole test set.
@@ -204,6 +206,7 @@ class RewardTrainer:
                 print(f'Early stopping after epoch {epoch}')
             
         print("finished training")
+        return self.net.state_dict()
 
     # save the final learned model
     def save_model(self):
@@ -249,16 +252,17 @@ def parse_config():
     parser.add_argument('--num_levels', type=int, default=0)
     parser.add_argument('--seed', default=0, help="random seed for experiments")
     parser.add_argument('--start_level', type=int, default=0)
-    parser.add_argument('--num_snippets', default=1000, type=int, help="number of short subtrajectories to sample")
+    parser.add_argument('--num_snippets', default=10000, type=int, help="number of short subtrajectories to sample")
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
-    parser.add_argument('--log_dir', default='trex/reward_models', help='general logs directory')
+    parser.add_argument('--log_dir', default='trex/reward_models/logs', help='general logs directory')
     parser.add_argument('--log_name', default='', help='specific name for this run')
-    parser.add_argument('--demo_infos', default = 'trex/demos/starpilot_easy_demo_infos.csv',
-     help="path to csv with trajectory infos")
+
     parser.add_argument('--num_dems',type=int, default = 6 , help = 'Number of demonstrations to train on')
-    parser.add_argument('--max_dem_len',type=int, default = 3000 , help = 'Maximimum exprert demonstration length')
-   
-    parser.add_argument('--num_epochs', type = int, default = 20, help = 'Number of epochs for reward learning')
+    parser.add_argument('--max_return',type=float , default = 1.0, 
+                        help = 'Maximum return of the provided demonstrations as a fraction of max available return')
+    
+
+    parser.add_argument('--max_num_epochs', type = int, default = 40, help = 'Number of epochs for reward learning')
     args = parser.parse_args()
 
     args.lr = 0.00005
@@ -272,18 +276,26 @@ def parse_config():
 
     return args
 
-def store_model(model, args):
-    model_path = os.path.join('trex/reward_models', str(time.time()) + '.rm')
+def store_model(state_dict, max_return, max_length, args):
 
-    with open(model_path, 'w') as f:
-        
-        fnames = ['first_name', 'last_name']
-        writer = csv.DictWriter(f, fieldnames=fnames)    
+    info_path = 'trex/reward_models/reward_model_infos.csv'
 
-        writer.writeheader()
-        writer.writerow({'first_name' : 'John', 'last_name': 'Smith'})
-        writer.writerow({'first_name' : 'Robert', 'last_name': 'Brown'})
-        writer.writerow({'first_name' : 'Julia', 'last_name': 'Griffin'})
+    if not os.path.exists(info_path):
+        with open('trex/reward_models/reward_model_infos.csv', 'w') as f: 
+            rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+            rew_writer.writerow(['path', 'method', 'env_name', 'mode',
+                                 'num_dems', 'max_return', 'max_length','seed'])
+
+    model_dir = 'trex/reward_models/model_files'
+    os.makedirs(model_dir, exist_ok=True)
+
+    save_path = os.path.join(model_dir, str(time.time()) + '.rm')
+    pickle.dump(state_dict, open(save_path, 'wb'))
+
+    with open(info_path, 'a') as f: 
+        rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        rew_writer.writerow([save_path, 'T-REX', args.env_name, args.distribution_mode,
+                            args.num_dems, max_return, max_length, args.seed])
 
 def main():
 
@@ -291,7 +303,7 @@ def main():
     run_dir, checkpoint_dir, run_id = log_this(args, args.log_dir, args.log_name)
     args.checkpoint_dir = checkpoint_dir
 
-    seed = int(args.seed)
+    seed = int(args.seed)   
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic=True
@@ -312,15 +324,37 @@ def main():
     # here is where the T-REX procedure begins
 
 
-    demo_infos = pd.read_csv(args.demo_infos, index_col=0)
-
+    demo_infos = pd.read_csv('trex/demos/demo_infos.csv')
+    demo_infos = demo_infos[demo_infos['env_name']==args.env_name]
+    demo_infos = demo_infos[demo_infos['mode']==args.distribution_mode]
 
     #unpickle just the entries where return is more then 10
     #append them to the dems list (100 dems)
+    #TODO: add smart demo picking so that demo returns are ~ evenly distributed
     dems = []
-    for path in np.random.choice(demo_infos['path'], args.num_dems):
-        dems.append(pickle.load(open(path, "rb")))
+
+    #implemening uniformish distribution of demo returns
+    max_return = demo_infos.max()['return'] * args.max_return
+
+    rew_step  = max_return / 4
+    while len(dems) < args.num_dems:
+        high = rew_step 
+        while (high < max_return) and (len(dems) < args.num_dems):
+            #crerate boundaries to pick the demos from, and filter demos accordingly
+            low = high - rew_step
+            filtered_dems = demo_infos[(demo_infos['return'] > low) & (demo_infos['return']< high)]
+            #choose random demo and append
+            path = np.random.choice(filtered_dems['path'], 1).item()
+            dems.append(pickle.load(open(path, "rb")))
+
+            high += rew_step
     
+    max_demo_return = max([demo['return'] for demo in dems])
+    max_demo_length = max([demo['length'] for demo in dems])
+
+
+
+
     print('Creating training data ...')
     num_snippets = args.num_snippets
     min_snippet_length = 20 #min length of tracjectory for training comparison
@@ -336,9 +370,8 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     trainer = RewardTrainer(args, device)
 
-    trainer.learn_reward(training_data)
-    trainer.save_model()
-    
+    state_dict = trainer.learn_reward(training_data)
+
     # print out predicted cumulative returns and actual returns
 
     with torch.no_grad():
@@ -346,8 +379,9 @@ def main():
         for demo in sorted(dems, key = lambda x: x['return']):
             print(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}")
 
-
     print("Final train set accuracy", trainer.calc_accuracy(training_data[0]))
+
+    store_model(state_dict, max_demo_return, max_demo_length, args)
 
 
 if __name__=="__main__":
