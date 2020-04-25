@@ -8,6 +8,7 @@ Video
 train-procgen/
 
 reward_models/
+reward_models_old/
 policy_models/
 
 *.pth

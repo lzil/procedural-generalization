@@ -95,8 +95,10 @@ def get_corr_with_ground(reward_path, env_name):
         
     # load learned reward model
     net = RewardNet()
+    print(reward_path)
+    pdb.set_trace()
+    torch.load(reward_path, map_location=torch.device('cpu'))
     net.load_state_dict(torch.load(reward_path, map_location=torch.device('cpu')))
-
     rs = []
     for dem in dems:
         r_prediction = np.sum(net.predict_batch_rewards(dem['observations']))
