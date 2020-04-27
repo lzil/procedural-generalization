@@ -14,6 +14,7 @@ import copy
 import os
 import random
 import sys
+from shutil import copy2
 
 import tensorflow as tf
 
@@ -48,12 +49,12 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
     training_data = []
     validation_data = []
     # pick 2 of demos to be validation demos
-    val_idx = np.random.choice(len(dems), 2 , replace = False)
+    val_idx = np.random.choice(len(dems), int(len(dems)/6),  replace = False)
 
     while len(training_data) < num_snippets:
 
         #pick two random demos
-        i1, i2 = np.random.choice(len(dems) ,2, replace = False) 
+        i1, i2 = np.random.choice(len(dems) ,2,  replace = False) 
         is_validation  = (i1 in val_idx) or (i2 in val_idx)   
         # d1['return'] <= d2['return']
         d0, d1 = sorted([dems[i1], dems[i2]], key = lambda x: x['return'])
@@ -155,7 +156,7 @@ class RewardTrainer:
             epoch_loss = 0
             np.random.shuffle(training_set)
             #each epoch consists of 5000 updates - NOT passing through whole test set.
-            for i, ([traj_i, traj_j], label) in enumerate(training_set[:5000]):
+            for i, ([traj_i, traj_j], label) in enumerate(training_set[:self.args.epoch_size]):
 
                 traj_i = torch.from_numpy(traj_i).float().to(self.device)
                 traj_j = torch.from_numpy(traj_j).float().to(self.device)
@@ -171,7 +172,6 @@ class RewardTrainer:
                 # TODO: consider l2 regularization?
                 #included with the optimizer weight_decay value
                 #https://pytorch.org/docs/stable/_modules/torch/optim/adam.html#Adam 
-
 
                 l1_reg = abs_rewards * self.args.lam_l1
                 
@@ -200,7 +200,7 @@ class RewardTrainer:
                 
 
         print("finished training")
-        return self.best_model
+        return os.path.join(self.args.checkpoint_dir, 'reward_final.pth')
 
     # save the final learned model
     def save_model(self):
@@ -243,12 +243,16 @@ def parse_config():
     parser.add_argument('-c', '--config', type=str, default=None)
 
     parser.add_argument('--env_name', type=str, default='starpilot')
-    parser.add_argument('--distribution_mode', type=str, default='hard',
+    parser.add_argument('--distribution_mode', type=str, default='easy',
         choices=["easy", "hard", "exploration", "memory", "extreme"])
-    parser.add_argument('--num_levels', type=int, default=0)
-    parser.add_argument('--seed', default=0, help="random seed for experiments")
-    parser.add_argument('--start_level', type=int, default=0)
-    parser.add_argument('--num_snippets', default=10000, type=int, help="number of short subtrajectories to sample")
+    parser.add_argument('--seed', type = int, help="random seed for experiments")
+    parser.add_argument('--num_snippets', default=20000, type=int, help="number of short subtrajectories to sample")
+    parser.add_argument('--min_snippet_length', default=20, type=int, help="Min length of tracjectory for training comparison")
+    parser.add_argument('--max_snippet_length', default=100, type=int, help="Max length of tracjectory for training comparison")
+    
+
+    parser.add_argument('--epoch_size', default = 2000, type=int, help ='How often to measure validation accuracy')
+
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
     parser.add_argument('--log_dir', default='trex/reward_models/logs', help='general logs directory')
     parser.add_argument('--log_name', default='', help='specific name for this run')
@@ -258,13 +262,13 @@ def parse_config():
                         help = 'Maximum return of the provided demonstrations as a fraction of max available return')
     
 
-    parser.add_argument('--max_num_epochs', type = int, default = 40, help = 'Number of epochs for reward learning')
+    parser.add_argument('--max_num_epochs', type = int, default = 100, help = 'Number of epochs for reward learning')
     args = parser.parse_args()
 
     args.lr = 0.00005
     args.weight_decay = 0.0
     args.lam_l1=0
-    args.patience = 2
+    args.patience = 6
     args.stochastic = True
 
     if args.config is not None:
@@ -272,7 +276,7 @@ def parse_config():
 
     return args
 
-def store_model(state_dict, max_return, max_length, args):
+def store_model(state_dict_path, max_return, max_length, args):
 
     info_path = 'trex/reward_models/reward_model_infos.csv'
 
@@ -280,18 +284,18 @@ def store_model(state_dict, max_return, max_length, args):
         with open('trex/reward_models/reward_model_infos.csv', 'w') as f: 
             rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
             rew_writer.writerow(['path', 'method', 'env_name', 'mode',
-                                 'num_dems', 'max_return', 'max_length','seed'])
+                                 'num_dems', 'max_return', 'max_length'])
 
     model_dir = 'trex/reward_models/model_files'
     os.makedirs(model_dir, exist_ok=True)
 
-    save_path = os.path.join(model_dir, str(time.time()) + '.rm')
-    pickle.dump(state_dict, open(save_path, 'wb'))
+    save_path = os.path.join(model_dir, str(args.seed)[:3] + '_' + str(args.seed)[3:] + '.rm')
+    copy2(state_dict_path, save_path)
 
     with open(info_path, 'a') as f: 
         rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         rew_writer.writerow([save_path, 'T-REX', args.env_name, args.distribution_mode,
-                            args.num_dems, max_return, max_length, args.seed])
+                            args.num_dems, max_return, max_length])
 
 def main():
 
@@ -299,7 +303,11 @@ def main():
     run_dir, checkpoint_dir, run_id = log_this(args, args.log_dir, args.log_name)
     args.checkpoint_dir = checkpoint_dir
 
-    seed = int(args.seed)   
+    if args.seed:
+        seed = args.seed 
+    else:
+        seed = args.seed = random.randint(1e6,1e7-1)   
+
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic=True
@@ -307,22 +315,15 @@ def main():
     tf.set_random_seed(seed)
     random.seed(seed)
     
-    Procgen_fn = lambda: ProcgenEnv(
-        num_envs=1,
-        env_name=args.env_name,
-        num_levels=args.num_levels,
-        start_level=args.start_level,
-        distribution_mode=args.distribution_mode,
-        rand_seed = seed
-    )
-    venv_fn = lambda: VecExtractDictObs(Procgen_fn(), "rgb")
     
     # here is where the T-REX procedure begins
 
 
     demo_infos = pd.read_csv('trex/demos/demo_infos.csv')
+    demo_infos = demo_infos[demo_infos['set_name']=='TRAIN']
     demo_infos = demo_infos[demo_infos['env_name']==args.env_name]
     demo_infos = demo_infos[demo_infos['mode']==args.distribution_mode]
+
 
     #unpickle just the entries where return is more then 10
     #append them to the dems list (100 dems)
@@ -334,6 +335,7 @@ def main():
 
     rew_step  = max_return / 4
     while len(dems) < args.num_dems:
+
         high = rew_step 
         while (high < max_return) and (len(dems) < args.num_dems):
             #crerate boundaries to pick the demos from, and filter demos accordingly
@@ -342,28 +344,21 @@ def main():
             #choose random demo and append
             path = np.random.choice(filtered_dems['path'], 1).item()
             dems.append(pickle.load(open(path, "rb")))
-
             high += rew_step
     
     max_demo_return = max([demo['return'] for demo in dems])
     max_demo_length = max([demo['length'] for demo in dems])
 
-
     print('Creating training data ...')
-    num_snippets = args.num_snippets
-    min_snippet_length = 20 #min length of tracjectory for training comparison
-    max_snippet_length = 100
 
-
-    training_data= create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length)
-
+    training_data= create_training_data(dems, args.num_snippets, args.min_snippet_length, args.max_snippet_length)
 
     # train a reward network using the dems collected earlier and save it
     print("Training reward model for", args.env_name)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     trainer = RewardTrainer(args, device)
 
-    state_dict = trainer.learn_reward(training_data)
+    state_dict_path = trainer.learn_reward(training_data)
 
     # print out predicted cumulative returns and actual returns
 
@@ -374,7 +369,7 @@ def main():
 
     print("Final train set accuracy", trainer.calc_accuracy(training_data[0]))
 
-    store_model(state_dict, max_demo_return, max_demo_length, args)
+    store_model(state_dict_path, max_demo_return, max_demo_length, args)
 
 
 if __name__=="__main__":
