@@ -61,11 +61,9 @@ def calc_correlations(r_constraints={}, save_path=None, verbose=True):
         pearsons.append(pearson_r)
         spearmans.append(spearman_r)
 
-    infos = {
-        'ids': ids,
-        'pearsons': pearsons,
-        'spearmans': spearmans
-    }
+    infos = {}
+    for idx, i in enumerate(ids):
+        infos[i] = (pearsons[i], spearmans[i])
 
     if save_path is not None:
         with open(save_path, 'w') as f:
@@ -83,7 +81,14 @@ def get_id(path):
 
 def plot_correlations(infos, plot_type='num_dems'):
     if plot_type == 'num_dems':
-        ids, pearsons, spearmans = infos
+        # fix old infos
+        if 'ids' in infos:
+            infos_ = {}
+            for idx, i in enumerate(infos['ids']):
+                infos_[i] = (infos['pearsons'][idx], infos['spearmans'][idx])
+            infos = infos_
+
+        ids = infos.keys()
 
         with open(os.path.join(reward_dir, 'reward_model_infos.csv')) as master:
             reader = csv.DictReader(master, delimiter=',')
@@ -101,25 +106,51 @@ def plot_correlations(infos, plot_type='num_dems'):
                 else:
                     demo_bins[row['num_dems']].append(rm_id)
 
-        demo_corrs = []
-        for k,v in demo_bins.items():
-            pearson_k = list(filter(lambda x: x in v, pearsons))
-            spearman_k = list(filter(lambda x: x in v, spearmans))
-            p_k_avg = np.mean(pearson_k)
-            s_k_avg = np.mean(spearman_k)
-            demo_corrs.append((int(k), p_k_avg, s_k_avg))
+        print(f'Using {len(demo_bins)} demo bins.')
 
-        demo_corrs = sorted(demo_corrs, key=lambda x: x[0])
+        # set up mean of 
+        demo_corrs_mean = []
+        demo_corrs_all = []
+        for k,v in demo_bins.items():
+            pearson_r = []
+            spearman_r = []
+            for rm_id in v:
+                pearson_r.append(infos[rm_id][0])
+                spearman_r.append(infos[rm_id][1])
+            p_k_avg = np.mean(pearson_r)
+            p_k_std = np.std(pearson_r)
+            s_k_avg = np.mean(spearman_r)
+            s_k_std = np.std(spearman_r)
+            demo_corrs_mean.append((int(k), p_k_avg, p_k_std, s_k_avg, s_k_std))
+            demo_corrs_all.append((int(k), pearson_r, spearman_r))
+
+
+        demo_corrs = sorted(demo_corrs_mean, key=lambda x: x[0])
         demo_corrs_T = list(zip(*demo_corrs))
 
+        # plt.errorbar(demo_corrs_T[0], demo_corrs_T[1], yerr=demo_corrs_T[2], elinewidth=3, capsize=5, marker='v', ms=10, ls='-', lw=3, color='skyblue', label='pearson')
+        # plt.errorbar(demo_corrs_T[0], demo_corrs_T[3], yerr=demo_corrs_T[4], elinewidth=2, capsize=3, marker='^', ms=10, ls='--', lw=3, color='salmon', label='spearman')
 
-        plt.plot(demo_corrs_T[0], demo_corrs_T[1], '-', label='pearson')
-        plt.plot(demo_corrs_T[0], demo_corrs_T[2], '--', label='spearman')
+        #fig = plt.figure()
 
-        plt.title('correlation vs number of training steps')
-        plt.xlabel('# steps')
-        plt.ylabel('r')
+        for d in demo_corrs_all:
+            for j in range(len(d[1])):
+                plt.plot(d[0], d[1][j], marker='o', ms=5, alpha=.3, color='skyblue')
+                plt.plot(d[0], d[2][j], marker='o', ms=5, alpha=.3, color='salmon')
+
+        plt.plot(demo_corrs_T[0], demo_corrs_T[1], marker='v', ms=8, ls='-', lw=3, color='skyblue', label='pearson')
+        plt.plot(demo_corrs_T[0], demo_corrs_T[3], marker='^', ms=8, ls='--', lw=3, color='salmon', label='spearman')
+
+        plt.yticks(np.arange(0, 1.1, 0.1))
+        plt.grid(which='both', axis='y')
+
+        plt.title('reward model correlations', fontdict={'fontsize':15, 'fontweight':'bold'})
+        plt.xlabel('# demonstrations', fontdict={'fontsize': 12})
+        plt.ylabel('r', fontdict={'fontsize': 12})
+        plt.ylim((0, 1))
         plt.legend()
+        plt.savefig('figures/rm_correlations.png')
+        plt.gcf()
         plt.show()
 
 
@@ -130,9 +161,10 @@ def main():
         'mode': 'easy',
         'sequential': '0.0'
     }
-    infos = calc_correlations(r_constraints=reward_constraints, save_path='correlations.json')
-
-    #plot_correlations(infos)
+    #infos = calc_correlations(r_constraints=reward_constraints, save_path='correlations.json')
+    with open('correlations.json', 'r') as f:
+        infos = json.load(f)
+    plot_correlations(infos)
 
 
 if __name__ == '__main__':

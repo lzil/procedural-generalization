@@ -11,6 +11,8 @@ train-procgen/
 reward_models/
 policy_models/
 
+correlations.json
+
 *.pth
 
 *slurm*
