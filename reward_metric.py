@@ -1,6 +1,8 @@
 import numpy as np
 import torch
 import pandas as pd 
+import os
+import csv
 import pickle
 from scipy.stats import pearsonr
 from scipy.stats import spearmanr
@@ -82,21 +84,34 @@ def main():
     print(f'Spearman r: {spearman_r}; p-val: {spearman_p}')
 
 
-def get_corr_with_ground(reward_path, env_name):
-    #read the demo infos, see first 5 entries
-    demo_infos = pd.read_csv('trex/demos/'+env_name+'_demo_infos.csv', index_col=0)
+def get_corr_with_ground(demos_folder, reward_path, max_set_size=200, constraints={}, verbose=True):
+    # setting up constraints on what demos we want
+    if verbose:
+        print(f'Using constraints: {constraints}')
 
-    #unpickle just the entries where return is more then 10
-    #append them to the dems list (100 dems)
     dems = []
-    for path in demo_infos['path'][:100]:
-        dems.append(pickle.load(open(path, "rb")))
+
+    with open(os.path.join(demos_folder, 'demo_infos.csv')) as master:
+        reader = csv.DictReader(master, delimiter=',')
+        for row in reader:
+            # awkward implementation of making sure constraints are satisfied
+            skip = False
+            for k,v in constraints.items():
+                if row[k] != v:
+                    skip = True
+            if skip:
+                continue
+
+            dems.append(pickle.load(open(row['path'], "rb")))
+            # limit the total number of demonstrations we compute correlation on
+            if len(dems) >= max_set_size:
+                break
+        if verbose:
+            print(f'Loaded {len(dems)} demonstrations.')
     
         
     # load learned reward model
     net = RewardNet()
-    print(reward_path)
-    pdb.set_trace()
     torch.load(reward_path, map_location=torch.device('cpu'))
     net.load_state_dict(torch.load(reward_path, map_location=torch.device('cpu')))
     rs = []
@@ -105,11 +120,15 @@ def get_corr_with_ground(reward_path, env_name):
         r_true = dem['return']
 
         rs.append((r_true, r_prediction))
+        
 
     # calculate correlations and print them
     rs_by_var = list(zip(*rs))
     pearson_r, pearson_p = pearsonr(rs_by_var[0], rs_by_var[1])
     spearman_r, spearman_p = spearmanr(rs)
+
+    if verbose:
+        print(f'(pearson_r, spearman_r): {(pearson_r, spearman_r)}')
 
     return (pearson_r, spearman_r)
 

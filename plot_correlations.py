@@ -14,10 +14,12 @@ from reward_metric import get_corr_with_ground
 reward_dir = 'trex/reward_models/'
 env_name = 'starpilot'
 
+demos_folder = 'trex/demos'
+
 
 n_dems = [10, 15, 20, 30, 40]
 
-def calc_correlations(demos=None, tset='train', save_path=None):
+def calc_correlations(r_constraints={}, save_path=None, verbose=True):
 
     with open(os.path.join(reward_dir, 'reward_model_infos.csv')) as master:
         reader = csv.DictReader(master, delimiter=',')
@@ -25,9 +27,11 @@ def calc_correlations(demos=None, tset='train', save_path=None):
         # filtering rows
         rows = []
         for row in reader:
-            if demos is not None and demos != row['num_dems']:
-                continue
-            if tset is not None and tset != row['set']:
+            skip = False
+            for k,v in r_constraints.items():
+                if row[k] != v:
+                    skip = True
+            if skip:
                 continue
             rows.append(row)
 
@@ -37,11 +41,21 @@ def calc_correlations(demos=None, tset='train', save_path=None):
     spearmans = []
     ids = []
     for r in range(len(rows)):
-        path = rows[r]['path']
-        rm_id = get_id(path)
-        print(f'{r+1}/{len(rows)}: {rm_id}, {path}')
+        r_path = rows[r]['path']
+        rm_id = get_id(r_path)
+        print(f'{r+1}/{len(rows)}: {rm_id}, {r_path}')
 
-        pearson_r, spearman_r = get_corr_with_ground(path, env_name)
+        d_constraints = {
+            'set_name': 'TEST',
+            'env_name': 'starpilot'
+        }
+
+        pearson_r, spearman_r = get_corr_with_ground(
+            demos_folder=demos_folder,
+            reward_path=r_path,
+            constraints=d_constraints,
+            verbose=False
+        )
 
         ids.append(rm_id)
         pearsons.append(pearson_r)
@@ -72,14 +86,16 @@ def plot_correlations(infos, plot_type='num_dems'):
         ids, pearsons, spearmans = infos
 
         with open(os.path.join(reward_dir, 'reward_model_infos.csv')) as master:
-            reader = csv.reader(master, delimiter=',')
+            reader = csv.DictReader(master, delimiter=',')
 
             # filtering rows
             demo_bins = {}
             for row in reader:
                 rm_id = get_id(row['path'])
+                # reward model that we're not considering
                 if rm_id not in ids:
                     continue
+                # reward model trained with specific # demonstrations
                 if row['num_dems'] not in demo_bins:
                     demo_bins[row['num_dems']] = [rm_id]
                 else:
@@ -109,9 +125,14 @@ def plot_correlations(infos, plot_type='num_dems'):
 
 
 def main():
-    infos = calc_correlations(tset=None, save_path='correlations.json')
+    reward_constraints = {
+        'env_name': 'starpilot',
+        'mode': 'easy',
+        'sequential': '0.0'
+    }
+    infos = calc_correlations(r_constraints=reward_constraints, save_path='correlations.json')
 
-    plot_correlations(infos)
+    #plot_correlations(infos)
 
 
 if __name__ == '__main__':
