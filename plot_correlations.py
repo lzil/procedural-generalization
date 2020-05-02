@@ -20,6 +20,8 @@ demos_folder = 'trex/demos'
 n_dems = [10, 15, 20, 30, 40]
 
 def calc_correlations(r_constraints={}, save_path=None, verbose=True):
+    print('Calculating correlations of reward models.')
+    print(f'== Constraints: {r_constraints}')
 
     with open(os.path.join(reward_dir, 'reward_model_infos.csv')) as master:
         reader = csv.DictReader(master, delimiter=',')
@@ -36,7 +38,7 @@ def calc_correlations(r_constraints={}, save_path=None, verbose=True):
             rows.append(row)
 
     print(f'== Using {len(rows)} rows.')
-
+    
     pearsons = []
     spearmans = []
     ids = []
@@ -63,7 +65,7 @@ def calc_correlations(r_constraints={}, save_path=None, verbose=True):
 
     infos = {}
     for idx, i in enumerate(ids):
-        infos[i] = (pearsons[i], spearmans[i])
+        infos[i] = (pearsons[idx], spearmans[idx])
 
     if save_path is not None:
         with open(save_path, 'w') as f:
@@ -141,15 +143,15 @@ def plot_correlations(infos, plot_type='num_dems'):
         plt.plot(demo_corrs_T[0], demo_corrs_T[1], marker='v', ms=8, ls='-', lw=3, color='skyblue', label='pearson')
         plt.plot(demo_corrs_T[0], demo_corrs_T[3], marker='^', ms=8, ls='--', lw=3, color='salmon', label='spearman')
 
-        plt.yticks(np.arange(0, 1.1, 0.1))
+        plt.yticks(np.arange(-1.1, 1.1, 0.1))
         plt.grid(which='both', axis='y')
 
         plt.title('reward model correlations', fontdict={'fontsize':15, 'fontweight':'bold'})
         plt.xlabel('# demonstrations', fontdict={'fontsize': 12})
         plt.ylabel('r', fontdict={'fontsize': 12})
-        plt.ylim((0, 1))
+        plt.ylim((-1, 1))
         plt.legend()
-        plt.savefig('figures/rm_correlations.png')
+        # plt.savefig('figures/rm_correlations.png')
         plt.gcf()
         plt.show()
 
@@ -159,11 +161,13 @@ def main():
     reward_constraints = {
         'env_name': 'starpilot',
         'mode': 'easy',
-        'sequential': '0.0'
+        'sequential': '200000000'
     }
-    #infos = calc_correlations(r_constraints=reward_constraints, save_path='correlations.json')
-    with open('correlations.json', 'r') as f:
+    correlations_path = 'correlations_3.json'
+    #infos = calc_correlations(r_constraints=reward_constraints, save_path=correlations_path)
+    with open(correlations_path, 'r') as f:
         infos = json.load(f)
+    #pdb.set_trace()
     plot_correlations(infos)
 
 
