@@ -32,6 +32,7 @@ parser.add_argument('--start_level', type=int, default=0)
 parser.add_argument('--num_dems', default=300, type=int, help="number of trajectories to use")
 parser.add_argument('--models_dir', default='trex/experts/0/starpilot/060217/checkpoints')
 parser.add_argument('--sequential', type = int, default=0)
+parser.add_argument('--logdir', type = str, default = 'trex/demos')
 
 args = parser.parse_args()
 
@@ -40,7 +41,7 @@ args = parser.parse_args()
 procgen_fn_true = lambda seed: ProcgenEnv(
     num_envs=1,
     env_name=args.env_name,
-    num_levels=1,
+    num_levels=99,
     start_level=seed,
     distribution_mode=args.distribution_mode,
     use_sequential_levels = args.sequential
@@ -53,8 +54,8 @@ venv_fn = lambda: VecExtractDictObs(procgen_fn_true(0), "rgb")
 init_policy = ppo2.learn(env=venv_fn(), network=conv_fn, total_timesteps=0)
 
 
-info_path = 'trex/demos/demo_infos.csv'
-demo_dir = 'trex/demos/demo_files'
+info_path = args.logdir + '/demo_infos.csv'
+demo_dir = args.logdir + '/demo_files'
 
 if args.test_set:
     set_name = 'TEST'

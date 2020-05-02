@@ -12,7 +12,7 @@ class ProcgenRunner:
     run():
     - Make a mini batch
     """
-    def __init__(self, env_fn, model, nsteps=500):
+    def __init__(self, env_fn, model, nsteps=3000):
         self.env_fn = env_fn
         self.model = model
         self.states = model.initial_state
