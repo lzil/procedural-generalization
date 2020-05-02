@@ -246,23 +246,27 @@ def parse_config():
     parser.add_argument('--distribution_mode', type=str, default='easy',
         choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--seed', type = int, help="random seed for experiments")
-    parser.add_argument('--num_snippets', default=20000, type=int, help="number of short subtrajectories to sample")
-    parser.add_argument('--min_snippet_length', default=20, type=int, help="Min length of tracjectory for training comparison")
-    parser.add_argument('--max_snippet_length', default=100, type=int, help="Max length of tracjectory for training comparison")
-    
+    parser.add_argument('--sequential', type = int, default = 0, 
+        help = '0 means not sequential, any other number creates sequential env with start_level = args.sequential')
 
-    parser.add_argument('--epoch_size', default = 2000, type=int, help ='How often to measure validation accuracy')
-
-    #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
-    parser.add_argument('--log_dir', default='trex/reward_models/logs', help='general logs directory')
-    parser.add_argument('--log_name', default='', help='specific name for this run')
 
     parser.add_argument('--num_dems',type=int, default = 6 , help = 'Number of demonstrations to train on')
     parser.add_argument('--max_return',type=float , default = 1.0, 
                         help = 'Maximum return of the provided demonstrations as a fraction of max available return')
+    parser.add_argument('--num_snippets', default=20000, type=int, help="number of short subtrajectories to sample")
+    parser.add_argument('--min_snippet_length', default=20, type=int, help="Min length of tracjectory for training comparison")
+    parser.add_argument('--max_snippet_length', default=100, type=int, help="Max length of tracjectory for training comparison")
+    
+    parser.add_argument('--epoch_size', default = 2000, type=int, help ='How often to measure validation accuracy')
+    parser.add_argument('--max_num_epochs', type = int, default = 100, help = 'Number of epochs for reward learning')
+    
+    #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
+    parser.add_argument('--log_dir', default='trex/reward_models/logs', help='general logs directory')
+    parser.add_argument('--log_name', default='', help='specific name for this run')
+
     
 
-    parser.add_argument('--max_num_epochs', type = int, default = 100, help = 'Number of epochs for reward learning')
+    
     args = parser.parse_args()
 
     args.lr = 0.00005
@@ -284,7 +288,7 @@ def store_model(state_dict_path, max_return, max_length, args):
         with open('trex/reward_models/reward_model_infos.csv', 'w') as f: 
             rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
             rew_writer.writerow(['path', 'method', 'env_name', 'mode',
-                                 'num_dems', 'max_return', 'max_length'])
+                                 'num_dems', 'max_return', 'max_length', 'sequential'])
 
     model_dir = 'trex/reward_models/model_files'
     os.makedirs(model_dir, exist_ok=True)
@@ -295,7 +299,7 @@ def store_model(state_dict_path, max_return, max_length, args):
     with open(info_path, 'a') as f: 
         rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         rew_writer.writerow([save_path, 'T-REX', args.env_name, args.distribution_mode,
-                            args.num_dems, max_return, max_length])
+                            args.num_dems, max_return, max_length, args.sequential])
 
 def main():
 
@@ -320,29 +324,37 @@ def main():
 
 
     demo_infos = pd.read_csv('trex/demos/demo_infos.csv')
+
     demo_infos = demo_infos[demo_infos['set_name']=='TRAIN']
     demo_infos = demo_infos[demo_infos['env_name']==args.env_name]
     demo_infos = demo_infos[demo_infos['mode']==args.distribution_mode]
-
+    demo_infos = demo_infos[demo_infos['sequential'] == args.sequential]
+    print(len(demo_infos))
 
     #unpickle just the entries where return is more then 10
     #append them to the dems list (100 dems)
     #TODO: add smart demo picking so that demo returns are ~ evenly distributed
-    dems = []
+    
 
     #implemening uniformish distribution of demo returns
-    max_return = demo_infos.max()['return'] * args.max_return
+    max_return = (demo_infos.max()['return'] - demo_infos.min()['return']) * args.max_return
+    min_return = demo_infos.min()['return']
 
-    rew_step  = max_return / 4
+    rew_step  = (max_return - min_return)/ 4
+    dems = []
+    paths = []
     while len(dems) < args.num_dems:
 
-        high = rew_step 
+        high = min_return + rew_step 
         while (high < max_return) and (len(dems) < args.num_dems):
             #crerate boundaries to pick the demos from, and filter demos accordingly
             low = high - rew_step
             filtered_dems = demo_infos[(demo_infos['return'] > low) & (demo_infos['return']< high)]
+            #make sure we have only unique demos
+            new_paths = demo_infos[~demo_infos['path'].isin(paths)]
             #choose random demo and append
             path = np.random.choice(filtered_dems['path'], 1).item()
+            paths.append(path)
             dems.append(pickle.load(open(path, "rb")))
             high += rew_step
     
