@@ -1,6 +1,8 @@
 import numpy as np
 import torch
 import pandas as pd 
+import os
+import csv
 import pickle
 from scipy.stats import pearsonr
 from scipy.stats import spearmanr
@@ -23,8 +25,8 @@ def parse_config():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', type=str, default=None)
-    parser.add_argument('--reward_path', type=str, default='trex/reward_models/starpilot10/checkpoints_788428/reward_final.pth')
 
+    parser.add_argument('--reward_path', type=str, default='trex/reward_models/starpilot10/checkpoints_788428/reward_final.pth')
     parser.add_argument('--env_name', type=str, default='starpilot')
     parser.add_argument('--distribution_mode', type=str, default='easy',
         choices=["easy", "hard", "exploration", "memory", "extreme"])
@@ -85,6 +87,53 @@ def main():
     print(f'Spearman r: {spearman_r}; p-val: {spearman_p}')
 
 
+def get_corr_with_ground(demos_folder, reward_path, max_set_size=200, constraints={}, verbose=True):
+    # setting up constraints on what demos we want
+    if verbose:
+        print(f'Using constraints: {constraints}')
+
+    dems = []
+
+    with open(os.path.join(demos_folder, 'demo_infos.csv')) as master:
+        reader = csv.DictReader(master, delimiter=',')
+        for row in reader:
+            # awkward implementation of making sure constraints are satisfied
+            skip = False
+            for k,v in constraints.items():
+                if row[k] != v:
+                    skip = True
+            if skip:
+                continue
+
+            dems.append(pickle.load(open(row['path'], "rb")))
+            # limit the total number of demonstrations we compute correlation on
+            if len(dems) >= max_set_size:
+                break
+        if verbose:
+            print(f'Loaded {len(dems)} demonstrations.')
+    
+        
+    # load learned reward model
+    net = RewardNet()
+    torch.load(reward_path, map_location=torch.device('cpu'))
+    net.load_state_dict(torch.load(reward_path, map_location=torch.device('cpu')))
+    rs = []
+    for dem in dems:
+        r_prediction = np.sum(net.predict_batch_rewards(dem['observations']))
+        r_true = dem['return']
+
+        rs.append((r_true, r_prediction))
+        
+
+    # calculate correlations and print them
+    rs_by_var = list(zip(*rs))
+    pearson_r, pearson_p = pearsonr(rs_by_var[0], rs_by_var[1])
+    spearman_r, spearman_p = spearmanr(rs)
+
+    if verbose:
+        print(f'(pearson_r, spearman_r): {(pearson_r, spearman_r)}')
+
+    return (pearson_r, spearman_r)
 
 
 if __name__ == '__main__':
