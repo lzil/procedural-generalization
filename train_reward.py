@@ -265,7 +265,7 @@ def parse_config():
     parser.add_argument('--log_name', default='', help='specific name for this run')
 
     
-
+    parser.add_argument('--save_dir', default='trex/reward_models', help='where the models and csv get stored')
     
     args = parser.parse_args()
 
@@ -282,15 +282,15 @@ def parse_config():
 
 def store_model(state_dict_path, max_return, max_length, args):
 
-    info_path = 'trex/reward_models/reward_model_infos.csv'
+    info_path = args.save_dir + '/reward_model_infos.csv'
 
     if not os.path.exists(info_path):
-        with open('trex/reward_models/reward_model_infos.csv', 'w') as f: 
+        with open(info_path, 'w') as f: 
             rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
             rew_writer.writerow(['path', 'method', 'env_name', 'mode',
                                  'num_dems', 'max_return', 'max_length', 'sequential'])
 
-    model_dir = 'trex/reward_models/model_files'
+    model_dir = args.save_dir + '/model_files'
     os.makedirs(model_dir, exist_ok=True)
 
     save_path = os.path.join(model_dir, str(args.seed)[:3] + '_' + str(args.seed)[3:] + '.rm')
@@ -331,11 +331,7 @@ def main():
     demo_infos = demo_infos[demo_infos['sequential'] == args.sequential]
     print(len(demo_infos))
 
-    #unpickle just the entries where return is more then 10
-    #append them to the dems list (100 dems)
-    #TODO: add smart demo picking so that demo returns are ~ evenly distributed
     
-
     #implemening uniformish distribution of demo returns
     max_return = (demo_infos.max()['return'] - demo_infos.min()['return']) * args.max_return
     min_return = demo_infos.min()['return']
@@ -346,12 +342,14 @@ def main():
     while len(dems) < args.num_dems:
 
         high = min_return + rew_step 
-        while (high < max_return) and (len(dems) < args.num_dems):
+        while (high <= max_return) and (len(dems) < args.num_dems):
             #crerate boundaries to pick the demos from, and filter demos accordingly
             low = high - rew_step
+            print(low, high)
+            print(len(dems))
             filtered_dems = demo_infos[(demo_infos['return'] > low) & (demo_infos['return']< high)]
             #make sure we have only unique demos
-            new_paths = demo_infos[~demo_infos['path'].isin(paths)]
+            new_paths = demo_infos[~demo_infos['path'].isin(paths)]['path']
             #choose random demo and append
             path = np.random.choice(filtered_dems['path'], 1).item()
             paths.append(path)
