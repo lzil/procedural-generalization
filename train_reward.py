@@ -11,7 +11,7 @@ import torch.optim as optim
 
 import time
 import copy
-import os
+import os, glob
 import random
 import sys
 from shutil import copy2
@@ -300,6 +300,15 @@ def store_model(state_dict_path, max_return, max_length, args):
         rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         rew_writer.writerow([save_path, 'T-REX', args.env_name, args.distribution_mode,
                             args.num_dems, max_return, max_length, args.sequential])
+def get_demo(file_name):
+    #searches for the demo with the given name in all subfolders,
+    #then loads it and returns 
+
+    path = glob.glob('./**/'+file_name, recursive=True)[0]
+    demo = pickle.load(open(path, 'rb'))
+
+    return demo
+
 
 def main():
 
@@ -323,7 +332,7 @@ def main():
     # here is where the T-REX procedure begins
 
 
-    demo_infos = pd.read_csv('trex/demos/demo_infos.csv')
+    demo_infos = pd.read_csv('trex/fruit_dems/demo_infos.csv')
 
     demo_infos = demo_infos[demo_infos['set_name']=='TRAIN']
     demo_infos = demo_infos[demo_infos['env_name']==args.env_name]
@@ -351,9 +360,9 @@ def main():
             #make sure we have only unique demos
             new_paths = demo_infos[~demo_infos['path'].isin(paths)]['path']
             #choose random demo and append
-            path = np.random.choice(filtered_dems['path'], 1).item()
-            paths.append(path)
-            dems.append(pickle.load(open(path, "rb")))
+            file_name = np.random.choice(new_paths, 1).item()
+            paths.append(file_name)
+            dems.append(get_demo(file_name))
             high += rew_step
     
     max_demo_return = max([demo['return'] for demo in dems])
