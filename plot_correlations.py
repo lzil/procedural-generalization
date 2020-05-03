@@ -145,22 +145,22 @@ def main():
     plot_mode = 'corrs'
     #plot_mode = 'plot'
 
-    env_name = 'starpilot'
+    env_name = 'fruitbot'
 
     reward_dir = 'trex/reward_models/'
-    demo_dir = 'trex/star_dems'
+    demo_dir = 'trex/fruit_dems'
 
     demo_constraints = {
         'set_name': 'TEST',
         'env_name': env_name,
         'mode': 'easy',
-        'sequential': '200000000'
+        'sequential': '1'
     }
 
     reward_constraints = {
         'env_name': env_name,
         'mode': 'easy',
-        'sequential': '200000000'
+        'sequential': '1'
     }
 
     # set up path of correlations json

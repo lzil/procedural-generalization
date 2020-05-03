@@ -116,17 +116,18 @@ class RewardNet(nn.Module):
     def predict_returns(self, traj):
         '''calculate cumulative return of trajectory'''
         x = traj.permute(0,3,1,2) #get into NCHW format
-        r = self.model(x)
+        r = torch.abs(self.model(x))
         all_reward = torch.sum(r)
         all_reward_abs = torch.sum(torch.abs(r))
         return all_reward, all_reward_abs
 
     def predict_batch_rewards(self, batch_obs):
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         with torch.no_grad():
-            x = torch.tensor(batch_obs, dtype=torch.float32).permute(0,3,1,2) #get into NCHW format
+            x = torch.tensor(batch_obs).permute(0,3,1,2).float().to(device) #get into NCHW format
             #compute forward pass of reward network (we parallelize across frames so batch size is length of partial trajectory)
-            r = self.model(x)
-            return r.numpy().flatten()
+            r = torch.abs(self.model(x))
+            return r.cpu().numpy().flatten()
 
     def forward(self, traj_i, traj_j):
         '''compute cumulative return for each trajectory and return logits'''
@@ -193,7 +194,7 @@ class RewardTrainer:
                 eps_no_max += 1
 
             #Early stopping
-            if eps_no_max >= self.args.patience:
+            if (eps_no_max >= self.args.patience) and (max_val_acc > 0.7):
                 print(f'Early stopping after epoch {epoch}')
                 self.net.load_state_dict(self.best_model)  #loading the model with the best validation accuracy
                 break
@@ -332,13 +333,13 @@ def main():
     # here is where the T-REX procedure begins
 
 
-    demo_infos = pd.read_csv('trex/fruit_dems/demo_infos.csv')
+    demo_infos = pd.read_csv('trex/demos/demo_infos.csv')
 
     demo_infos = demo_infos[demo_infos['set_name']=='TRAIN']
     demo_infos = demo_infos[demo_infos['env_name']==args.env_name]
     demo_infos = demo_infos[demo_infos['mode']==args.distribution_mode]
     demo_infos = demo_infos[demo_infos['sequential'] == args.sequential]
-    print(len(demo_infos))
+    print(f'{len(demo_infos)} training demos available')
 
     
     #implemening uniformish distribution of demo returns
@@ -354,8 +355,6 @@ def main():
         while (high <= max_return) and (len(dems) < args.num_dems):
             #crerate boundaries to pick the demos from, and filter demos accordingly
             low = high - rew_step
-            print(low, high)
-            print(len(dems))
             filtered_dems = demo_infos[(demo_infos['return'] > low) & (demo_infos['return']< high)]
             #make sure we have only unique demos
             new_paths = demo_infos[~demo_infos['path'].isin(paths)]['path']

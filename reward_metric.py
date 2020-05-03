@@ -19,6 +19,7 @@ from helpers.utils import add_yaml_args
 from helpers.ProxyRewardWrapper import ProxyRewardWrapper
 import helpers.baselines_ppo2 as ppo2
 
+from train_reward import get_demo
 
 # function should be used more generally
 def get_corr_with_ground(demos_folder, reward_path, max_set_size=200, constraints={}, verbose=True):
@@ -36,7 +37,7 @@ def get_corr_with_ground(demos_folder, reward_path, max_set_size=200, constraint
             if not retain_row(row, constraints):
                 continue
 
-            dems.append(pickle.load(open(row['path'], "rb")))
+            dems.append(get_demo(row['path']))
             # limit the total number of demonstrations we compute correlation on
             if len(dems) >= max_set_size:
                 break
@@ -45,9 +46,10 @@ def get_corr_with_ground(demos_folder, reward_path, max_set_size=200, constraint
             print(f'Loaded {len(dems)} demonstrations.')
             
     # load learned reward model
-    net = RewardNet()
-    torch.load(reward_path, map_location=torch.device('cpu'))
-    net.load_state_dict(torch.load(reward_path, map_location=torch.device('cpu')))
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    net = RewardNet().to(device)
+    torch.load(reward_path, map_location=torch.device(device))
+    net.load_state_dict(torch.load(reward_path, map_location=torch.device(device)))
     rs = []
     for dem in dems:
         r_prediction = np.sum(net.predict_batch_rewards(dem['observations']))
