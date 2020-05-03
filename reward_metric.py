@@ -97,12 +97,9 @@ def get_corr_with_ground(demos_folder, reward_path, max_set_size=200, constraint
     with open(os.path.join(demos_folder, 'demo_infos.csv')) as master:
         reader = csv.DictReader(master, delimiter=',')
         for row in reader:
-            # awkward implementation of making sure constraints are satisfied
-            skip = False
-            for k,v in constraints.items():
-                if row[k] != v:
-                    skip = True
-            if skip:
+
+            # making sure constraints are satisfied
+            if not retain_row(row, constraints):
                 continue
 
             dems.append(pickle.load(open(row['path'], "rb")))
@@ -134,6 +131,22 @@ def get_corr_with_ground(demos_folder, reward_path, max_set_size=200, constraint
         print(f'(pearson_r, spearman_r): {(pearson_r, spearman_r)}')
 
     return (pearson_r, spearman_r)
+
+
+def retain_row(row, constraints):
+    for k,v in constraints.items():
+        # respect maximum return constraints
+        if 'demo_max_return' in constraints:
+            if float(row['return']) > float(constraints['demo_max_return']):
+                return False
+        if 'rm_max_return' in constraints:
+            if float(row['max_return']) > float(constraints['rm_max_return']):
+                return False
+
+        # all other constraints
+        if row[k] != v:
+            return False
+    return True
 
 
 if __name__ == '__main__':

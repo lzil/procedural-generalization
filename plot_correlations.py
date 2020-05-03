@@ -8,7 +8,7 @@ import pickle
 import json
 import csv
 
-from reward_metric import get_corr_with_ground
+from reward_metric import get_corr_with_ground, retain_row
 
 
 reward_dir = 'trex/reward_models/'
@@ -26,11 +26,7 @@ def calc_correlations(r_constraints={}, save_path=None, verbose=True):
         # filtering rows
         rows = []
         for row in reader:
-            skip = False
-            for k,v in r_constraints.items():
-                if row[k] != v:
-                    skip = True
-            if skip:
+            if not retain_row(row, r_constraints):
                 continue
             rows.append(row)
 
@@ -151,23 +147,31 @@ def plot_correlations(infos, plot_type='num_dems'):
         plt.ylabel('r', fontdict={'fontsize': 12})
         plt.ylim((-1, 1))
         plt.legend()
-        # plt.savefig('figures/rm_correlations.png')
+        plt.savefig('figures/corrs_tmp.png')
         plt.gcf()
         plt.show()
 
 
 
 def main():
+    # either calculate correlations from scratch, or just plot based on a saved correlations file
+    plot_mode = 'corrs'
+    #plot_mode = 'plot'
+
     reward_constraints = {
         'env_name': 'starpilot',
         'mode': 'easy',
         'sequential': '200000000'
     }
-    correlations_path = 'correlations_3.json'
-    #infos = calc_correlations(r_constraints=reward_constraints, save_path=correlations_path)
-    with open(correlations_path, 'r') as f:
-        infos = json.load(f)
-    #pdb.set_trace()
+    correlations_name = 'correlations_3.json'
+    correlations_path = os.path.join('trex', 'logs', 'corrs', correlations_name)
+
+    if plot_mode == 'corrs':
+        infos = calc_correlations(r_constraints=reward_constraints, save_path=correlations_path)
+    elif plot_mode == 'plot':
+        with open(correlations_path, 'r') as f:
+            infos = json.load(f)
+
     plot_correlations(infos)
 
 
