@@ -106,10 +106,10 @@ def get_corr_with_ground(demos_folder, reward_path, max_set_size=200, constraint
             # limit the total number of demonstrations we compute correlation on
             if len(dems) >= max_set_size:
                 break
+
         if verbose:
             print(f'Loaded {len(dems)} demonstrations.')
-    
-        
+            
     # load learned reward model
     net = RewardNet()
     torch.load(reward_path, map_location=torch.device('cpu'))

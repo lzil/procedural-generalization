@@ -14,10 +14,7 @@ from reward_metric import get_corr_with_ground
 reward_dir = 'trex/reward_models/'
 env_name = 'starpilot'
 
-demos_folder = 'trex/demos'
-
-
-n_dems = [10, 15, 20, 30, 40]
+demos_folder = 'trex/star_dems'
 
 def calc_correlations(r_constraints={}, save_path=None, verbose=True):
     print('Calculating correlations of reward models.')
@@ -49,7 +46,9 @@ def calc_correlations(r_constraints={}, save_path=None, verbose=True):
 
         d_constraints = {
             'set_name': 'TEST',
-            'env_name': 'starpilot'
+            'env_name': 'starpilot',
+            'mode': 'easy',
+            'sequential': '200000000'
         }
 
         pearson_r, spearman_r = get_corr_with_ground(
@@ -72,7 +71,7 @@ def calc_correlations(r_constraints={}, save_path=None, verbose=True):
             json.dump(infos, f)
             print(f'== Saved correlations into {save_path}')
 
-    return (ids, pearsons, spearmans)
+    return infos
 
 
 def get_id(path):
@@ -90,6 +89,7 @@ def plot_correlations(infos, plot_type='num_dems'):
                 infos_[i] = (infos['pearsons'][idx], infos['spearmans'][idx])
             infos = infos_
 
+        print(infos)
         ids = infos.keys()
 
         with open(os.path.join(reward_dir, 'reward_model_infos.csv')) as master:

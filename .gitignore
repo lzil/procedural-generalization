@@ -13,6 +13,8 @@ policy_models/
 
 correlations_*.json
 
+star_dems/
+
 *.pth
 
 *slurm*
