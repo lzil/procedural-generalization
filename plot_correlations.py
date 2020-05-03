@@ -164,7 +164,9 @@ def main():
         'sequential': '200000000'
     }
     correlations_name = 'correlations_3.json'
-    correlations_path = os.path.join('trex', 'logs', 'corrs', correlations_name)
+    corrs_path = os.path.join('trex', 'logs', 'corrs')
+    os.makedirs(corrs_path, exist_ok=True)
+    correlations_path = os.path.join(corrs_path, correlations_name)
 
     if plot_mode == 'corrs':
         infos = calc_correlations(r_constraints=reward_constraints, save_path=correlations_path)
