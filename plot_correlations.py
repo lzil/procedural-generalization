@@ -10,13 +10,7 @@ import csv
 
 from reward_metric import get_corr_with_ground, retain_row
 
-
-reward_dir = 'trex/reward_models/'
-env_name = 'starpilot'
-
-demos_folder = 'trex/star_dems'
-
-def calc_correlations(r_constraints={}, save_path=None, verbose=True):
+def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, save_path=None, verbose=True):
     print('Calculating correlations of reward models.')
     print(f'== Constraints: {r_constraints}')
 
@@ -40,15 +34,8 @@ def calc_correlations(r_constraints={}, save_path=None, verbose=True):
         rm_id = get_id(r_path)
         print(f'{r+1}/{len(rows)}: {rm_id}, {r_path}')
 
-        d_constraints = {
-            'set_name': 'TEST',
-            'env_name': 'starpilot',
-            'mode': 'easy',
-            'sequential': '200000000'
-        }
-
         pearson_r, spearman_r = get_corr_with_ground(
-            demos_folder=demos_folder,
+            demos_folder=demo_dir,
             reward_path=r_path,
             constraints=d_constraints,
             verbose=False
@@ -76,7 +63,7 @@ def get_id(path):
     return rm_id
 
 
-def plot_correlations(infos, plot_type='num_dems'):
+def plot_correlations(infos, reward_dir, plot_type='num_dems'):
     if plot_type == 'num_dems':
         # fix old infos
         if 'ids' in infos:
@@ -85,13 +72,13 @@ def plot_correlations(infos, plot_type='num_dems'):
                 infos_[i] = (infos['pearsons'][idx], infos['spearmans'][idx])
             infos = infos_
 
-        print(infos)
+        print(f'== Using correlations: {infos}')
         ids = infos.keys()
 
         with open(os.path.join(reward_dir, 'reward_model_infos.csv')) as master:
             reader = csv.DictReader(master, delimiter=',')
 
-            # filtering rows
+            # filtering rows by demonstration count
             demo_bins = {}
             for row in reader:
                 rm_id = get_id(row['path'])
@@ -106,7 +93,6 @@ def plot_correlations(infos, plot_type='num_dems'):
 
         print(f'Using {len(demo_bins)} demo bins.')
 
-        # set up mean of 
         demo_corrs_mean = []
         demo_corrs_all = []
         for k,v in demo_bins.items():
@@ -155,26 +141,48 @@ def plot_correlations(infos, plot_type='num_dems'):
 
 def main():
     # either calculate correlations from scratch, or just plot based on a saved correlations file
+
     plot_mode = 'corrs'
     #plot_mode = 'plot'
 
-    reward_constraints = {
-        'env_name': 'starpilot',
+    env_name = 'starpilot'
+
+    reward_dir = 'trex/reward_models/'
+    demo_dir = 'trex/star_dems'
+
+    demo_constraints = {
+        'set_name': 'TEST',
+        'env_name': env_name,
         'mode': 'easy',
         'sequential': '200000000'
     }
+
+    reward_constraints = {
+        'env_name': env_name,
+        'mode': 'easy',
+        'sequential': '200000000'
+    }
+
+    # set up path of correlations json
     correlations_name = 'correlations_3.json'
     corrs_path = os.path.join('trex', 'logs', 'corrs')
     os.makedirs(corrs_path, exist_ok=True)
     correlations_path = os.path.join(corrs_path, correlations_name)
 
     if plot_mode == 'corrs':
-        infos = calc_correlations(r_constraints=reward_constraints, save_path=correlations_path)
+        infos = calc_correlations(
+            reward_dir=reward_dir,
+            demo_dir=demo_dir,
+            r_constraints=reward_constraints,
+            d_constraints=demo_constraints,
+            save_path=correlations_path
+        )
+    # don't bother plotting, just pull the file
     elif plot_mode == 'plot':
         with open(correlations_path, 'r') as f:
             infos = json.load(f)
 
-    plot_correlations(infos)
+    plot_correlations(infos, reward_dir)
 
 
 if __name__ == '__main__':
