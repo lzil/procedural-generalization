@@ -41,9 +41,9 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
     """
 
     #Print out some info
-    logging.info(len(dems), ' demonstrations provided')
-    logging.info("demo lengths :", [d['length'] for d in dems])
-    logging.info('demo returns :', [d['return'] for d in dems])
+    logging.info( f' {len(dems)} demonstrations provided')
+    logging.info(f"demo lengths : {[d['length'] for d in dems]}")
+    logging.info(f"demo returns : {[d['return'] for d in dems]}")
     demo_lens = [d['length'] for d in dems]
     logging.info(f'demo length: min = {min(demo_lens)}, max = {max(demo_lens)}')
     assert min_snippet_length < min(demo_lens), "One of the trajectories is too short"
@@ -255,7 +255,7 @@ def parse_config():
     parser.add_argument('--num_dems',type=int, default = 6 , help = 'Number of demonstrations to train on')
     parser.add_argument('--max_return',type=float , default = 1.0, 
                         help = 'Maximum return of the provided demonstrations as a fraction of max available return')
-    parser.add_argument('--num_snippets', default=20000, type=int, help="number of short subtrajectories to sample")
+    parser.add_argument('--num_snippets', default=50000, type=int, help="number of short subtrajectories to sample")
     parser.add_argument('--min_snippet_length', default=20, type=int, help="Min length of tracjectory for training comparison")
     parser.add_argument('--max_snippet_length', default=100, type=int, help="Max length of tracjectory for training comparison")
     
@@ -285,13 +285,13 @@ def parse_config():
 
 def store_model(state_dict_path, max_return, max_length, args):
 
-    info_path = args.save_dir + '/reward_model_infos.csv'
+    info_path = args.save_dir + '/reward_model_infos_wlogs.csv'
 
     if not os.path.exists(info_path):
         with open(info_path, 'w') as f: 
             rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
             rew_writer.writerow(['path', 'method', 'env_name', 'mode',
-                                 'num_dems', 'max_return', 'max_length', 'sequential'])
+                                 'num_dems', 'max_return', 'max_length', 'sequential', 'log_path'])
 
     model_dir = args.save_dir + '/model_files'
     os.makedirs(model_dir, exist_ok=True)
@@ -302,7 +302,7 @@ def store_model(state_dict_path, max_return, max_length, args):
     with open(info_path, 'a') as f: 
         rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         rew_writer.writerow([save_path, 'T-REX', args.env_name, args.distribution_mode,
-                            args.num_dems, max_return, max_length, args.sequential])
+                            args.num_dems, max_return, max_length, args.sequential, args.log_path])
 def get_demo(file_name):
     #searches for the demo with the given name in all subfolders,
     #then loads it and returns 
@@ -317,8 +317,14 @@ def main():
 
     args = parse_config()
     log_path, checkpoint_dir, run_id = log_this(args, args.log_dir, args.log_name)
-    logging.basicConfig(filename=log_path, level=logging.DEBUG)
-    logging.addHandler(logging.StreamHandler())
+    args.log_path = log_path
+    logging.basicConfig(format='%(message)s', filename=log_path, level=logging.DEBUG)
+    # logging.addHandler(logging.StreamHandler())
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG)
+    logging.getLogger('').addHandler(console)
+
+    
     args.run_id = run_id
     args.checkpoint_dir = checkpoint_dir
 
@@ -344,7 +350,7 @@ def main():
     demo_infos = demo_infos[demo_infos['env_name']==args.env_name]
     demo_infos = demo_infos[demo_infos['mode']==args.distribution_mode]
     demo_infos = demo_infos[demo_infos['sequential'] == args.sequential]
-    logging.info(len(demo_infos))
+    logging.info(f'{len(demo_infos)} demonstrations available')
 
     
     #implemening uniformish distribution of demo returns
@@ -360,8 +366,6 @@ def main():
         while (high <= max_return) and (len(dems) < args.num_dems):
             #crerate boundaries to pick the demos from, and filter demos accordingly
             low = high - rew_step
-            logging.info(low, high)
-            logging.info(len(dems))
             filtered_dems = demo_infos[(demo_infos['return'] > low) & (demo_infos['return']< high)]
             #make sure we have only unique demos
             new_paths = demo_infos[~demo_infos['path'].isin(paths)]['path']
@@ -379,7 +383,7 @@ def main():
     training_data= create_training_data(dems, args.num_snippets, args.min_snippet_length, args.max_snippet_length)
 
     # train a reward network using the dems collected earlier and save it
-    logging.info("Training reward model for", args.env_name)
+    logging.info("Training reward model for %s", args.env_name)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     trainer = RewardTrainer(args, device)
 
@@ -392,7 +396,7 @@ def main():
         for demo in sorted(dems, key = lambda x: x['return']):
             logging.info(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}")
 
-    logging.info("Final train set accuracy", trainer.calc_accuracy(training_data[0]))
+    logging.info(f"Final train set accuracy {trainer.calc_accuracy(training_data[0])}")
 
     store_model(state_dict_path, max_demo_return, max_demo_length, args)
 
