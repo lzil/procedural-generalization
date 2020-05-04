@@ -26,7 +26,7 @@ def add_yaml_args(args, config_file):
     return args
 
 # produce run id and create log directory
-def log_this(config, log_dir, log_name=None):
+def log_this(config, log_dir, log_name=None, checkpoints=True):
     run_id = str(int(time.time()))[4:]
     print(f'Run id: {run_id}')
 
@@ -34,8 +34,10 @@ def log_this(config, log_dir, log_name=None):
         log_name = run_id
     run_dir = os.path.join(log_dir, log_name)
     os.makedirs(run_dir, exist_ok=True)
-    checkpoint_dir = os.path.join(run_dir, f'checkpoints_{run_id}')
-    os.makedirs(checkpoint_dir, exist_ok=True)
+
+    if checkpoints:
+        checkpoint_dir = os.path.join(run_dir, f'checkpoints_{run_id}')
+        os.makedirs(checkpoint_dir, exist_ok=True)
 
     log_path = os.path.join(run_dir, f'{run_id}.log')
 
@@ -46,4 +48,10 @@ def log_this(config, log_dir, log_name=None):
         json.dump(vars(config), f, indent=4)
         print(f'Config file saved to: {path_config}')
 
-    return log_path, checkpoint_dir, run_id
+    # major TODO to change this to be more widely usable and not specific to applications
+    if checkpoints:
+        # used for reward model training
+        return log_path, checkpoint_dir, run_id
+    else:
+        # used for correlations
+        return run_dir, run_id
