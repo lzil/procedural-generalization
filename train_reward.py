@@ -194,7 +194,7 @@ class RewardTrainer:
                 eps_no_max += 1
 
             #Early stopping
-            if (eps_no_max >= self.args.patience) and (max_val_acc > 0.7):
+            if (eps_no_max >= self.args.patience) and (max_val_acc > 0.6):
                 print(f'Early stopping after epoch {epoch}')
                 self.net.load_state_dict(self.best_model)  #loading the model with the best validation accuracy
                 break
@@ -259,7 +259,7 @@ def parse_config():
     parser.add_argument('--max_snippet_length', default=100, type=int, help="Max length of tracjectory for training comparison")
     
     parser.add_argument('--epoch_size', default = 2000, type=int, help ='How often to measure validation accuracy')
-    parser.add_argument('--max_num_epochs', type = int, default = 100, help = 'Number of epochs for reward learning')
+    parser.add_argument('--max_num_epochs', type = int, default = 50, help = 'Number of epochs for reward learning')
     
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
     parser.add_argument('--log_dir', default='trex/reward_models/logs', help='general logs directory')
@@ -333,7 +333,7 @@ def main():
     # here is where the T-REX procedure begins
 
 
-    demo_infos = pd.read_csv('trex/demos/demo_infos.csv')
+    demo_infos = pd.read_csv('trex/fruit_dems/demo_infos.csv')
 
     demo_infos = demo_infos[demo_infos['set_name']=='TRAIN']
     demo_infos = demo_infos[demo_infos['env_name']==args.env_name]

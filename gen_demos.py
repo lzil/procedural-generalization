@@ -29,7 +29,7 @@ parser.add_argument('--distribution_mode', type=str, default='easy',
     choices=["easy", "hard", "exploration", "memory", "extreme"])
 parser.add_argument('--test_set', action = 'store_true')
 parser.add_argument('--start_level', type=int, default=0)
-parser.add_argument('--num_dems', default=300, type=int, help="number of trajectories to use")
+parser.add_argument('--num_dems', default=200, type=int, help="number of trajectories to use")
 parser.add_argument('--models_dir', default='trex/experts/0/starpilot/060217/checkpoints')
 parser.add_argument('--sequential', type = int, default=0)
 parser.add_argument('--logdir', type = str, default = 'trex/demos')

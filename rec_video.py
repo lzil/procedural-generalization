@@ -51,10 +51,10 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='Default arguments to initialize and load the model and env')
     parser.add_argument('--env_name', type=str, default='coinrun')
-    parser.add_argument('--distribution_mode', type=str, default='hard', choices=["easy", "hard", "exploration", "memory", "extreme"])
+    parser.add_argument('--distribution_mode', type=str, default='easy', choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=0)
     parser.add_argument('--start_level', type=int, default=0)
-    parser.add_argument('--video_length', type=int, default=400, help = 'video length measured in agent steps')
+    parser.add_argument('--video_length', type=int, default=500, help = 'video length measured in agent steps')
     parser.add_argument('--num_screens', type=int, default=1, help = 'Number of screens in video')
     parser.add_argument('--load_path', type=str, default = 'baseline_agent/sample/checkpoints/coinrun_03000',
         help = 'path to the model')

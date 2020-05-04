@@ -63,7 +63,7 @@ def get_id(path):
     return rm_id
 
 
-def plot_correlations(infos, reward_dir, plot_type='num_dems'):
+def plot_correlations(infos, reward_dir, r_constraints, plot_type='num_dems'):
     if plot_type == 'num_dems':
         # fix old infos
         if 'ids' in infos:
@@ -128,7 +128,7 @@ def plot_correlations(infos, reward_dir, plot_type='num_dems'):
         plt.yticks(np.arange(-1.1, 1.1, 0.1))
         plt.grid(which='both', axis='y')
 
-        plt.title('reward model correlations', fontdict={'fontsize':15, 'fontweight':'bold'})
+        plt.title(f'reward model correlations \n {r_constraints["env_name"]} sequential:{r_constraints["sequential"]}', fontdict={'fontsize':15, 'fontweight':'bold'})
         plt.xlabel('# demonstrations', fontdict={'fontsize': 12})
         plt.ylabel('r', fontdict={'fontsize': 12})
         plt.ylim((-1, 1))
@@ -146,6 +146,9 @@ def main():
     #plot_mode = 'plot'
 
     env_name = 'fruitbot'
+    mode = 'easy'
+    sequential = '0'
+
 
     reward_dir = 'trex/reward_models/'
     demo_dir = 'trex/fruit_dems'
@@ -153,14 +156,14 @@ def main():
     demo_constraints = {
         'set_name': 'TEST',
         'env_name': env_name,
-        'mode': 'easy',
-        'sequential': '1'
+        'mode': mode,
+        'sequential': sequential
     }
 
     reward_constraints = {
         'env_name': env_name,
-        'mode': 'easy',
-        'sequential': '1'
+        'mode': mode,
+        'sequential': sequential
     }
 
     # set up path of correlations json
@@ -182,7 +185,7 @@ def main():
         with open(correlations_path, 'r') as f:
             infos = json.load(f)
 
-    plot_correlations(infos, reward_dir)
+    plot_correlations(infos, reward_dir, reward_constraints)
 
 
 if __name__ == '__main__':

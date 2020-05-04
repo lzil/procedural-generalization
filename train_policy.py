@@ -30,18 +30,18 @@ def parse_config():
     parser.add_argument('-c', '--config', type=str, default=None)
 
     parser.add_argument('--env_name', type=str, default='chaser')
-    parser.add_argument('--distribution_mode', type=str, default='hard', choices=["easy", "hard", "exploration", "memory", "extreme"])
+    parser.add_argument('--distribution_mode', type=str, default='easy', choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=0)
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--load_path', type=str, default=None)
-    parser.add_argument('--log_dir', type=str, default='trex/logs')
+    parser.add_argument('--log_dir', type=str, default='trex/proxy_reward_experts')
     parser.add_argument('--log_name', type=str, default='')
     parser.add_argument('--reward_model_path', default='trex/reward_model_chaser', help="name and location for learned model params, e.g. ./learned_models/breakout.params")
 
     # logs every num_envs * nsteps
     parser.add_argument('--log_interval', type=int, default=5)
-    parser.add_argument('--save_interval', type=int, default=20)
+    parser.add_argument('--save_interval', type=int, default=10)
 
     parser.add_argument('--num_envs', type=int, default=64)
     parser.add_argument('--learning_rate', type=float, default=5e-4)
@@ -105,8 +105,9 @@ def main():
     venv = VecMonitor(venv=venv, filename=None, keep_buf=100)
 
     # load pretrained network
-    net = RewardNet()
-    net.load_state_dict(torch.load(args.reward_model_path, map_location=torch.device('cpu')))
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    net = RewardNet().to(device)
+    net.load_state_dict(torch.load(args.reward_model_path, map_location=torch.device(device)))
 
     # use batch reward prediction function instead of the ground truth reward function
     rew_func = lambda x: net.predict_batch_rewards(x)
