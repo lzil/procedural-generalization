@@ -16,6 +16,8 @@ import random
 import sys
 from shutil import copy2
 
+import logging
+
 import tensorflow as tf
 
 # from baselines.ppo2 import ppo2
@@ -27,9 +29,9 @@ from baselines.common.models import build_impala_cnn
 from helpers.trajectory_collection import ProcgenRunner, generate_procgen_dems
 from helpers.utils import *
 
-
-
 import argparse
+
+log = None
 
 
 def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length):
@@ -39,11 +41,11 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
     """
 
     #Print out some info
-    print(len(dems), ' demonstrations provided')
-    print("demo lengths :", [d['length'] for d in dems])
-    print('demo returns :', [d['return'] for d in dems])
+    logging.info( f' {len(dems)} demonstrations provided')
+    logging.info(f"demo lengths : {[d['length'] for d in dems]}")
+    logging.info(f"demo returns : {[d['return'] for d in dems]}")
     demo_lens = [d['length'] for d in dems]
-    print(f'demo length: min = {min(demo_lens)}, max = {max(demo_lens)}')
+    logging.info(f'demo length: min = {min(demo_lens)}, max = {max(demo_lens)}')
     assert min_snippet_length < min(demo_lens), "One of the trajectories is too short"
     
     training_data = []
@@ -116,18 +118,17 @@ class RewardNet(nn.Module):
     def predict_returns(self, traj):
         '''calculate cumulative return of trajectory'''
         x = traj.permute(0,3,1,2) #get into NCHW format
-        r = torch.abs(self.model(x))
+        r = self.model(x)
         all_reward = torch.sum(r)
         all_reward_abs = torch.sum(torch.abs(r))
         return all_reward, all_reward_abs
 
     def predict_batch_rewards(self, batch_obs):
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         with torch.no_grad():
-            x = torch.tensor(batch_obs).permute(0,3,1,2).float().to(device) #get into NCHW format
+            x = torch.tensor(batch_obs, dtype=torch.float32).permute(0,3,1,2) #get into NCHW format
             #compute forward pass of reward network (we parallelize across frames so batch size is length of partial trajectory)
-            r = torch.abs(self.model(x))
-            return r.cpu().numpy().flatten()
+            r = self.model(x)
+            return r.numpy().flatten()
 
     def forward(self, traj_i, traj_j):
         '''compute cumulative return for each trajectory and return logits'''
@@ -184,7 +185,7 @@ class RewardTrainer:
                 epoch_loss += item_loss
                 
             val_acc = self.calc_accuracy(validation_set[:1000]) #keep validation set under 1000 samples
-            print(f"epoch : {epoch},  loss : {epoch_loss:6.2f}, val accuracy : {val_acc:6.4f}, abs_rewards : {abs_rewards.item():5.2f}")
+            logging.info(f"epoch : {epoch},  loss : {epoch_loss:6.2f}, val accuracy : {val_acc:6.4f}, abs_rewards : {abs_rewards.item():5.2f}")
 
             if val_acc > max_val_acc:
                 self.save_model()
@@ -194,13 +195,13 @@ class RewardTrainer:
                 eps_no_max += 1
 
             #Early stopping
-            if (eps_no_max >= self.args.patience) and (max_val_acc > 0.6):
-                print(f'Early stopping after epoch {epoch}')
+            if eps_no_max >= self.args.patience:
+                logging.info(f'Early stopping after epoch {epoch}')
                 self.net.load_state_dict(self.best_model)  #loading the model with the best validation accuracy
                 break
                 
 
-        print("finished training")
+        logging.info("finished training")
         return os.path.join(self.args.checkpoint_dir, 'reward_final.pth')
 
     # save the final learned model
@@ -254,18 +255,19 @@ def parse_config():
     parser.add_argument('--num_dems',type=int, default = 6 , help = 'Number of demonstrations to train on')
     parser.add_argument('--max_return',type=float , default = 1.0, 
                         help = 'Maximum return of the provided demonstrations as a fraction of max available return')
-    parser.add_argument('--num_snippets', default=20000, type=int, help="number of short subtrajectories to sample")
+    parser.add_argument('--num_snippets', default=50000, type=int, help="number of short subtrajectories to sample")
     parser.add_argument('--min_snippet_length', default=20, type=int, help="Min length of tracjectory for training comparison")
     parser.add_argument('--max_snippet_length', default=100, type=int, help="Max length of tracjectory for training comparison")
     
     parser.add_argument('--epoch_size', default = 2000, type=int, help ='How often to measure validation accuracy')
-    parser.add_argument('--max_num_epochs', type = int, default = 50, help = 'Number of epochs for reward learning')
+    parser.add_argument('--max_num_epochs', type = int, default = 100, help = 'Number of epochs for reward learning')
     
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
     parser.add_argument('--log_dir', default='trex/reward_models/logs', help='general logs directory')
     parser.add_argument('--log_name', default='', help='specific name for this run')
 
-    
+    parser.add_argument('--log_to_file', action='store_true', help='print to a specific log file instead of console')
+
     parser.add_argument('--save_dir', default='trex/reward_models', help='where the models and csv get stored')
     
     args = parser.parse_args()
@@ -283,13 +285,13 @@ def parse_config():
 
 def store_model(state_dict_path, max_return, max_length, args):
 
-    info_path = args.save_dir + '/reward_model_infos.csv'
+    info_path = args.save_dir + '/reward_model_infos_wlogs.csv'
 
     if not os.path.exists(info_path):
         with open(info_path, 'w') as f: 
             rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
             rew_writer.writerow(['path', 'method', 'env_name', 'mode',
-                                 'num_dems', 'max_return', 'max_length', 'sequential'])
+                                 'num_dems', 'max_return', 'max_length', 'sequential', 'log_path'])
 
     model_dir = args.save_dir + '/model_files'
     os.makedirs(model_dir, exist_ok=True)
@@ -300,7 +302,7 @@ def store_model(state_dict_path, max_return, max_length, args):
     with open(info_path, 'a') as f: 
         rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         rew_writer.writerow([save_path, 'T-REX', args.env_name, args.distribution_mode,
-                            args.num_dems, max_return, max_length, args.sequential])
+                            args.num_dems, max_return, max_length, args.sequential, args.log_path])
 def get_demo(file_name):
     #searches for the demo with the given name in all subfolders,
     #then loads it and returns 
@@ -314,7 +316,16 @@ def get_demo(file_name):
 def main():
 
     args = parse_config()
-    run_dir, checkpoint_dir, run_id = log_this(args, args.log_dir, args.log_name)
+    log_path, checkpoint_dir, run_id = log_this(args, args.log_dir, args.log_name)
+    args.log_path = log_path
+    logging.basicConfig(format='%(message)s', filename=log_path, level=logging.DEBUG)
+    # logging.addHandler(logging.StreamHandler())
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG)
+    logging.getLogger('').addHandler(console)
+
+    
+    args.run_id = run_id
     args.checkpoint_dir = checkpoint_dir
 
     if args.seed:
@@ -339,7 +350,7 @@ def main():
     demo_infos = demo_infos[demo_infos['env_name']==args.env_name]
     demo_infos = demo_infos[demo_infos['mode']==args.distribution_mode]
     demo_infos = demo_infos[demo_infos['sequential'] == args.sequential]
-    print(f'{len(demo_infos)} training demos available')
+    logging.info(f'{len(demo_infos)} demonstrations available')
 
     
     #implemening uniformish distribution of demo returns
@@ -367,12 +378,12 @@ def main():
     max_demo_return = max([demo['return'] for demo in dems])
     max_demo_length = max([demo['length'] for demo in dems])
 
-    print('Creating training data ...')
+    logging.info('Creating training data ...')
 
     training_data= create_training_data(dems, args.num_snippets, args.min_snippet_length, args.max_snippet_length)
 
     # train a reward network using the dems collected earlier and save it
-    print("Training reward model for", args.env_name)
+    logging.info("Training reward model for %s", args.env_name)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     trainer = RewardTrainer(args, device)
 
@@ -381,11 +392,11 @@ def main():
     # print out predicted cumulative returns and actual returns
 
     with torch.no_grad():
-        print('true     |predicted')
+        logging.info('true     |predicted')
         for demo in sorted(dems, key = lambda x: x['return']):
-            print(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}")
+            logging.info(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}")
 
-    print("Final train set accuracy", trainer.calc_accuracy(training_data[0]))
+    logging.info(f"Final train set accuracy {trainer.calc_accuracy(training_data[0])}")
 
     store_model(state_dict_path, max_demo_return, max_demo_length, args)
 
