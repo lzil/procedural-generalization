@@ -142,10 +142,11 @@ def plot_correlations(infos, reward_dir, plot_type='num_dems'):
 def main():
     # either calculate correlations from scratch, or just plot based on a saved correlations file
 
-    plot_mode = 'corrs'
-    #plot_mode = 'plot'
+    corrs_from_file = True
 
     env_name = 'starpilot'
+    sequential = '200000000'
+    mode = 'easy'
 
     reward_dir = 'trex/reward_models/'
     demo_dir = 'trex/star_dems'
@@ -153,33 +154,36 @@ def main():
     demo_constraints = {
         'set_name': 'TEST',
         'env_name': env_name,
-        'mode': 'easy',
-        'sequential': '200000000'
+        'mode': mode,
+        'sequential': sequential
     }
 
     reward_constraints = {
         'env_name': env_name,
-        'mode': 'easy',
-        'sequential': '200000000'
+        'mode': mode,
+        'sequential': sequential
     }
 
     # set up path of correlations json
-    correlations_name = 'correlations_3.json'
-    corrs_path = os.path.join('trex', 'logs', 'corrs')
-    os.makedirs(corrs_path, exist_ok=True)
-    correlations_path = os.path.join(corrs_path, correlations_name)
+    # correlations_name = 'correlations_3.json'
+    # corr_dir = os.path.join('trex', 'logs', 'corrs')
+    # os.makedirs(corr_dir, exist_ok=True)
+    # correlations_path = os.path.join(corr_dir, correlations_name)
 
-    if plot_mode == 'corrs':
+    corr_path = 'trex/logs/corrs/correlations_3.json'
+
+    # if not from file, then do the long correlations evaluation and save the results
+    if not corrs_from_file:
         infos = calc_correlations(
             reward_dir=reward_dir,
             demo_dir=demo_dir,
             r_constraints=reward_constraints,
             d_constraints=demo_constraints,
-            save_path=correlations_path
+            save_path=corr_path
         )
-    # don't bother plotting, just pull the file
-    elif plot_mode == 'plot':
-        with open(correlations_path, 'r') as f:
+    # just pull the file
+    else:
+        with open(corr_path, 'r') as f:
             infos = json.load(f)
 
     plot_correlations(infos, reward_dir)

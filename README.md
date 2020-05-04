@@ -54,6 +54,17 @@ T-REX consists of 4 main steps.
 
 TODO: sample runs, config files
 
+---
+
+## calculating and plotting correlations
+
+We can evaluate the quality of a given model with a simple metric: the correlation between the real return of a trajectory and the predicted return from the reward model.
+
+The code for evaluating the correlation is in `reward_metric.py`, and the wrapper code that does all this in an organized fashion is in `plot_correlations.py`.
+
+Simply run `plot_correlations.py` with the right parameters in the main function.
+Initially, set 'corrs_from_file' to False; after each run that is run this way, the program will run `calc_correlations` (which take time to run) will be saved in a JSON file.
+Afterwards, the program will attempt to plot the correlations with `plot_correlations`; if 'corrs_from_file' is True, then the cached correlations file will be used.
 
 
 ---
