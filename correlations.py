@@ -183,9 +183,9 @@ def plot_correlations(infos, reward_dir, plot_type='num_dems', fig_path=None, sh
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('mode', choices=['calc', 'load'], help='whether to calculate correlations, or load from saved file')
+    parser.add_argument('mode', choices=['calc', 'plot'], help='whether to calculate correlations, or load from saved file')
 
-    parser.add_argument('--corr_path', default=None, help='path for the correlations file, only used in "load" mode')
+    parser.add_argument('--corr_path', default=None, help='path for the correlations file, only used in "plot" mode')
 
     parser.add_argument('--log_dir', default='trex/logs/corrs', help='directory to log the correlations')
     parser.add_argument('--fig_dir', default='trex/logs/corrs', help='directory for figures')
@@ -234,7 +234,7 @@ def main():
             save_path=json_path
         )
     # just pull the file
-    elif args.mode == 'load':
+    elif args.mode == 'plot':
         with open(args.corr_path, 'r') as f:
             infos = json.load(f)
         json_path = args.corr_path
