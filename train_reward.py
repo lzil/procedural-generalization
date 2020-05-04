@@ -16,6 +16,8 @@ import random
 import sys
 from shutil import copy2
 
+import logging
+
 import tensorflow as tf
 
 # from baselines.ppo2 import ppo2
@@ -27,9 +29,9 @@ from baselines.common.models import build_impala_cnn
 from helpers.trajectory_collection import ProcgenRunner, generate_procgen_dems
 from helpers.utils import *
 
-
-
 import argparse
+
+log = None
 
 
 def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length):
@@ -39,11 +41,11 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
     """
 
     #Print out some info
-    print(len(dems), ' demonstrations provided')
-    print("demo lengths :", [d['length'] for d in dems])
-    print('demo returns :', [d['return'] for d in dems])
+    logging.info(len(dems), ' demonstrations provided')
+    logging.info("demo lengths :", [d['length'] for d in dems])
+    logging.info('demo returns :', [d['return'] for d in dems])
     demo_lens = [d['length'] for d in dems]
-    print(f'demo length: min = {min(demo_lens)}, max = {max(demo_lens)}')
+    logging.info(f'demo length: min = {min(demo_lens)}, max = {max(demo_lens)}')
     assert min_snippet_length < min(demo_lens), "One of the trajectories is too short"
     
     training_data = []
@@ -183,7 +185,7 @@ class RewardTrainer:
                 epoch_loss += item_loss
                 
             val_acc = self.calc_accuracy(validation_set[:1000]) #keep validation set under 1000 samples
-            print(f"epoch : {epoch},  loss : {epoch_loss:6.2f}, val accuracy : {val_acc:6.4f}, abs_rewards : {abs_rewards.item():5.2f}")
+            logging.info(f"epoch : {epoch},  loss : {epoch_loss:6.2f}, val accuracy : {val_acc:6.4f}, abs_rewards : {abs_rewards.item():5.2f}")
 
             if val_acc > max_val_acc:
                 self.save_model()
@@ -194,12 +196,12 @@ class RewardTrainer:
 
             #Early stopping
             if eps_no_max >= self.args.patience:
-                print(f'Early stopping after epoch {epoch}')
+                logging.info(f'Early stopping after epoch {epoch}')
                 self.net.load_state_dict(self.best_model)  #loading the model with the best validation accuracy
                 break
                 
 
-        print("finished training")
+        logging.info("finished training")
         return os.path.join(self.args.checkpoint_dir, 'reward_final.pth')
 
     # save the final learned model
@@ -264,7 +266,8 @@ def parse_config():
     parser.add_argument('--log_dir', default='trex/reward_models/logs', help='general logs directory')
     parser.add_argument('--log_name', default='', help='specific name for this run')
 
-    
+    parser.add_argument('--log_to_file', action='store_true', help='print to a specific log file instead of console')
+
     parser.add_argument('--save_dir', default='trex/reward_models', help='where the models and csv get stored')
     
     args = parser.parse_args()
@@ -313,7 +316,10 @@ def get_demo(file_name):
 def main():
 
     args = parse_config()
-    run_dir, checkpoint_dir, run_id = log_this(args, args.log_dir, args.log_name)
+    log_path, checkpoint_dir, run_id = log_this(args, args.log_dir, args.log_name)
+    logging.basicConfig(filename=log_path, level=logging.DEBUG)
+    logging.addHandler(logging.StreamHandler())
+    args.run_id = run_id
     args.checkpoint_dir = checkpoint_dir
 
     if args.seed:
@@ -338,7 +344,7 @@ def main():
     demo_infos = demo_infos[demo_infos['env_name']==args.env_name]
     demo_infos = demo_infos[demo_infos['mode']==args.distribution_mode]
     demo_infos = demo_infos[demo_infos['sequential'] == args.sequential]
-    print(len(demo_infos))
+    logging.info(len(demo_infos))
 
     
     #implemening uniformish distribution of demo returns
@@ -354,8 +360,8 @@ def main():
         while (high <= max_return) and (len(dems) < args.num_dems):
             #crerate boundaries to pick the demos from, and filter demos accordingly
             low = high - rew_step
-            print(low, high)
-            print(len(dems))
+            logging.info(low, high)
+            logging.info(len(dems))
             filtered_dems = demo_infos[(demo_infos['return'] > low) & (demo_infos['return']< high)]
             #make sure we have only unique demos
             new_paths = demo_infos[~demo_infos['path'].isin(paths)]['path']
@@ -368,12 +374,12 @@ def main():
     max_demo_return = max([demo['return'] for demo in dems])
     max_demo_length = max([demo['length'] for demo in dems])
 
-    print('Creating training data ...')
+    logging.info('Creating training data ...')
 
     training_data= create_training_data(dems, args.num_snippets, args.min_snippet_length, args.max_snippet_length)
 
     # train a reward network using the dems collected earlier and save it
-    print("Training reward model for", args.env_name)
+    logging.info("Training reward model for", args.env_name)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     trainer = RewardTrainer(args, device)
 
@@ -382,11 +388,11 @@ def main():
     # print out predicted cumulative returns and actual returns
 
     with torch.no_grad():
-        print('true     |predicted')
+        logging.info('true     |predicted')
         for demo in sorted(dems, key = lambda x: x['return']):
-            print(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}")
+            logging.info(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}")
 
-    print("Final train set accuracy", trainer.calc_accuracy(training_data[0]))
+    logging.info("Final train set accuracy", trainer.calc_accuracy(training_data[0]))
 
     store_model(state_dict_path, max_demo_return, max_demo_length, args)
 

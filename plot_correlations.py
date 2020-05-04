@@ -170,6 +170,8 @@ def main():
     # os.makedirs(corr_dir, exist_ok=True)
     # correlations_path = os.path.join(corr_dir, correlations_name)
 
+    os.path.makedirs('figures', exist_ok=True)
+
     corr_path = 'trex/logs/corrs/correlations_3.json'
 
     # if not from file, then do the long correlations evaluation and save the results
