@@ -46,17 +46,7 @@ def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, 
     print('Calculating correlations of reward models.')
 
     # figure out which reward models to use
-<<<<<<< HEAD
-    with open(os.path.join(reward_dir, 'reward_model_infos_wlogs.csv')) as master:
-        reader = csv.DictReader(master, delimiter=',')
-        # filtering rows
-        rows = []
-        for row in reader:
-            if not retain_row(row, r_constraints):
-                continue
-            rows.append(row)
-    print(f'== Evaluating {len(rows)} reward models.')
-=======
+    
     # baseline reward is for using a proxy (currently demo length) as the reward
     if baseline_reward:
         print('== Calculating baseline reward - completely skipping the use of reward models.')
@@ -71,7 +61,7 @@ def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, 
                     continue
                 rows.append(row)
         print(f'== Evaluating {len(rows)} reward models.')
->>>>>>> 989ba6fe6870047769837668de0d4d050c204c78
+
     
     # figure out which demonstrations to use and load them
     print(f'== d_constraints: {d_constraints}')
@@ -82,12 +72,9 @@ def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, 
             # making sure constraints are satisfied
             if not retain_row(row, d_constraints):
                 continue
-<<<<<<< HEAD
 
             demos.append(get_demo(row['path']))
-=======
-            demos.append(pickle.load(open(row['path'], "rb")))
->>>>>>> 989ba6fe6870047769837668de0d4d050c204c78
+
             # limit the total number of demonstrations we compute correlation on
             if len(demos) >= max_set_size:
                 break

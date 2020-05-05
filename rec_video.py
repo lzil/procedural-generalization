@@ -50,7 +50,7 @@ if __name__ == '__main__':
 
     
     parser = argparse.ArgumentParser(description='Default arguments to initialize and load the model and env')
-    parser.add_argument('--env_name', type=str, default='coinrun')
+    parser.add_argument('--env_name', type=str, default='fruitbot')
     parser.add_argument('--distribution_mode', type=str, default='easy', choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=0)
     parser.add_argument('--start_level', type=int, default=0)
