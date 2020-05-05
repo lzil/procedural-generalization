@@ -10,6 +10,9 @@ import csv
 
 import argparse
 
+from scipy.stats import pearsonr
+from scipy.stats import spearmanr
+
 from helpers.utils import log_this
 from reward_metric import get_corr_with_ground
 
@@ -40,21 +43,25 @@ def get_id(path):
 # and calculates the correlations and saves them to a json file
 def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, max_set_size=200, save_path=None, verbose=False, baseline_reward=False):
     print('Calculating correlations of reward models.')
-    print(f'== r_constraints: {r_constraints}')
-    print(f'== d_constraints: {d_constraints}')
 
     # figure out which reward models to use
-    with open(os.path.join(reward_dir, 'reward_model_infos.csv')) as master:
-        reader = csv.DictReader(master, delimiter=',')
-        # filtering rows
-        rows = []
-        for row in reader:
-            if not retain_row(row, r_constraints):
-                continue
-            rows.append(row)
-    print(f'== Evaluating {len(rows)} reward models.')
+    # baseline reward is for using a proxy (currently demo length) as the reward
+    if baseline_reward:
+        print('== Calculating baseline reward - completely skipping the use of reward models.')
+    else:
+        print(f'== r_constraints: {r_constraints}')
+        with open(os.path.join(reward_dir, 'reward_model_infos.csv')) as master:
+            reader = csv.DictReader(master, delimiter=',')
+            # filtering rows
+            rows = []
+            for row in reader:
+                if not retain_row(row, r_constraints):
+                    continue
+                rows.append(row)
+        print(f'== Evaluating {len(rows)} reward models.')
     
     # figure out which demonstrations to use and load them
+    print(f'== d_constraints: {d_constraints}')
     demos = []
     with open(os.path.join(demo_dir, 'demo_infos.csv')) as master:
         reader = csv.DictReader(master, delimiter=',')
@@ -62,7 +69,6 @@ def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, 
             # making sure constraints are satisfied
             if not retain_row(row, d_constraints):
                 continue
-
             demos.append(pickle.load(open(row['path'], "rb")))
             # limit the total number of demonstrations we compute correlation on
             if len(demos) >= max_set_size:
@@ -70,24 +76,43 @@ def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, 
     print(f'== Using {len(demos)} demonstrations.')
     
     # do actual correlation calculations
-    pearsons = []
-    spearmans = []
-    ids = []
-    for r in range(len(rows)):
-        r_path = rows[r]['path']
-        rm_id = get_id(r_path)
-        print(f'{r+1}/{len(rows)}: {rm_id}, {r_path}')
 
-        pearson_r, spearman_r = get_corr_with_ground(
-            demos=demos,
-            reward_path=r_path,
-            verbose=verbose,
-            baseline_reward=baseline_reward
-        )
+    if baseline_reward:
+        rs = []
+        for dem in demos:
+            r_prediction = len(dem['observations'])
+            r_true = dem['return']
 
-        ids.append(rm_id)
-        pearsons.append(pearson_r)
-        spearmans.append(spearman_r)
+            rs.append((r_true, r_prediction))
+
+        # calculate correlations and print them
+        rs_by_var = list(zip(*rs))
+        pearson_r, pearson_p = pearsonr(rs_by_var[0], rs_by_var[1])
+        spearman_r, spearman_p = spearmanr(rs)
+
+        ids = ['BASELINE_REWARD']
+        pearsons = [pearson_r]
+        spearmans = [spearman_r]
+
+    else:
+        pearsons = []
+        spearmans = []
+        ids = []
+        for r in range(len(rows)):
+            r_path = rows[r]['path']
+            rm_id = get_id(r_path)
+            print(f'{r+1}/{len(rows)}: {rm_id}, {r_path}')
+
+            pearson_r, spearman_r = get_corr_with_ground(
+                demos=demos,
+                reward_path=r_path,
+                verbose=verbose,
+                baseline_reward=baseline_reward
+            )
+
+            ids.append(rm_id)
+            pearsons.append(pearson_r)
+            spearmans.append(spearman_r)
 
     infos = {}
     for idx, i in enumerate(ids):
@@ -150,11 +175,6 @@ def plot_correlations(infos, reward_dir, plot_type='num_dems', fig_path=None, sh
 
         demo_corrs = sorted(demo_corrs_mean, key=lambda x: x[0])
         demo_corrs_T = list(zip(*demo_corrs))
-
-        # plt.errorbar(demo_corrs_T[0], demo_corrs_T[1], yerr=demo_corrs_T[2], elinewidth=3, capsize=5, marker='v', ms=10, ls='-', lw=3, color='skyblue', label='pearson')
-        # plt.errorbar(demo_corrs_T[0], demo_corrs_T[3], yerr=demo_corrs_T[4], elinewidth=2, capsize=3, marker='^', ms=10, ls='--', lw=3, color='salmon', label='spearman')
-
-        #fig = plt.figure()
 
         for d in demo_corrs_all:
             for j in range(len(d[1])):
@@ -244,8 +264,8 @@ def main():
             infos = json.load(f)
         json_path = args.corr_path
 
-    fig_path = os.path.join(os.path.dirname(json_path), get_id(json_path) + '.png')
-    plot_correlations(infos, args.reward_dir, fig_path=fig_path, show_fig=False)
+        fig_path = os.path.join(os.path.dirname(json_path), get_id(json_path) + '.png')
+        plot_correlations(infos, args.reward_dir, fig_path=fig_path, show_fig=False)
 
 
 if __name__ == '__main__':
