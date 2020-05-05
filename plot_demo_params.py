@@ -12,12 +12,12 @@ from correlations import retain_row
 
 
 def main():
-    demo_csv = 'trex/demos/demo_infos.csv'
+    demo_csv = 'trex/demos/demo_infos2.csv'
 
     # use sequential constraint
     constraints = {
-        'env_name': 'starpilot',
-        'sequential': '200000000',
+        'env_name': 'fruitbot',
+        'sequential': '1',
         'mode': 'easy'
     }
 
@@ -31,14 +31,14 @@ def main():
             lens.append(float(row['length']))
             rets.append(float(row['return']))
 
-    lens = np.log(lens)
-    rets = np.log(rets)
+    # lens = np.log(lens)
+    # rets = np.log(rets)
 
     seq2 = (lens, rets)
 
     # same as above, but don't use sequential
     constraints = {
-        'env_name': 'starpilot',
+        'env_name': 'fruitbot',
         'sequential': '0',
         'mode': 'easy'
     }
@@ -53,8 +53,8 @@ def main():
             lens.append(float(row['length']))
             rets.append(float(row['return']))
 
-    lens = np.log(lens)
-    rets = np.log(rets)
+    # lens = np.log(lens)
+    # rets = np.log(rets)
 
     seq1 = (lens, rets)
 
@@ -69,6 +69,8 @@ def main():
     plt.title('length vs return of demonstration', fontdict={'fontsize':20, 'fontweight':'bold'})
     plt.legend()
     plt.xlabel('log length')
+    #plt.xlim([0,500])
+    #plt.ylim([-25,50])
     plt.ylabel('log return')
     plt.show()
 
