@@ -118,17 +118,18 @@ class RewardNet(nn.Module):
     def predict_returns(self, traj):
         '''calculate cumulative return of trajectory'''
         x = traj.permute(0,3,1,2) #get into NCHW format
-        r = self.model(x)
+        r = torch.abs(self.model(x))
         all_reward = torch.sum(r)
         all_reward_abs = torch.sum(torch.abs(r))
         return all_reward, all_reward_abs
 
     def predict_batch_rewards(self, batch_obs):
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         with torch.no_grad():
-            x = torch.tensor(batch_obs, dtype=torch.float32).permute(0,3,1,2) #get into NCHW format
+            x = torch.tensor(batch_obs, dtype=torch.float32).permute(0,3,1,2).to(device) #get into NCHW format
             #compute forward pass of reward network (we parallelize across frames so batch size is length of partial trajectory)
-            r = self.model(x)
-            return r.numpy().flatten()
+            r = torch.abs(self.model(x))
+            return r.cpu().numpy().flatten()
 
     def forward(self, traj_i, traj_j):
         '''compute cumulative return for each trajectory and return logits'''

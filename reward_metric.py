@@ -21,11 +21,11 @@ import helpers.baselines_ppo2 as ppo2
 
 # function should be used more generally
 def get_corr_with_ground(demos, reward_path, verbose=True):
-
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # load learned reward model
-    net = RewardNet()
-    torch.load(reward_path, map_location=torch.device('cpu'))
-    net.load_state_dict(torch.load(reward_path, map_location=torch.device('cpu')))
+    net = RewardNet().to(device)
+    torch.load(reward_path, map_location=torch.device(device))
+    net.load_state_dict(torch.load(reward_path, map_location=torch.device(device)))
     rs = []
     for dem in demos:
         r_prediction = np.sum(net.predict_batch_rewards(dem['observations']))

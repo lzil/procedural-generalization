@@ -12,6 +12,7 @@ import argparse
 
 from helpers.utils import log_this
 from reward_metric import get_corr_with_ground
+from train_reward import get_demo
 
 
 # helper function for filtering rows in a csv
@@ -44,7 +45,7 @@ def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, 
     print(f'== d_constraints: {d_constraints}')
 
     # figure out which reward models to use
-    with open(os.path.join(reward_dir, 'reward_model_infos.csv')) as master:
+    with open(os.path.join(reward_dir, 'reward_model_infos_wlogs.csv')) as master:
         reader = csv.DictReader(master, delimiter=',')
         # filtering rows
         rows = []
@@ -63,7 +64,7 @@ def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, 
             if not retain_row(row, d_constraints):
                 continue
 
-            demos.append(pickle.load(open(row['path'], "rb")))
+            demos.append(get_demo(row['path']))
             # limit the total number of demonstrations we compute correlation on
             if len(demos) >= max_set_size:
                 break
