@@ -395,10 +395,10 @@ def main():
 
     with torch.no_grad():
         logging.info('true     |predicted')
-        for demo in sorted(dems, key = lambda x: x['return']):
+        for demo in sorted(dems[:20], key = lambda x: x['return']):
             logging.info(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}")
 
-    logging.info(f"Final train set accuracy {trainer.calc_accuracy(training_data[0])}")
+    logging.info(f"Final train set accuracy {trainer.calc_accuracy(training_data[0][:5000])}")
 
     store_model(state_dict_path, max_demo_return, max_demo_length, args)
 
