@@ -11,7 +11,7 @@ train-procgen/
 reward_models/
 policy_models/
 
-star_dems/
+*dems/
 
 *.pth
 

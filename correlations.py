@@ -38,7 +38,7 @@ def get_id(path):
 
 # takes in directory of reward models and demonstrations, and appropriate constraints,
 # and calculates the correlations and saves them to a json file
-def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, max_set_size=200, save_path=None, verbose=False):
+def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, max_set_size=200, save_path=None, verbose=False, baseline_reward=False):
     print('Calculating correlations of reward models.')
     print(f'== r_constraints: {r_constraints}')
     print(f'== d_constraints: {d_constraints}')
@@ -81,7 +81,8 @@ def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, 
         pearson_r, spearman_r = get_corr_with_ground(
             demos=demos,
             reward_path=r_path,
-            verbose=verbose
+            verbose=verbose,
+            baseline_reward=baseline_reward
         )
 
         ids.append(rm_id)
@@ -197,6 +198,9 @@ def parse_args():
     parser.add_argument('--demo_dir', default='trex/star_dems')
     parser.add_argument('--reward_dir', default='trex/reward_models/')
 
+    # use length of demonstration as proxy for demonstration reward
+    parser.add_argument('--baseline_reward', action='store_true')
+
     args = parser.parse_args()
 
     return args
@@ -231,7 +235,8 @@ def main():
             demo_dir=args.demo_dir,
             r_constraints=reward_constraints,
             d_constraints=demo_constraints,
-            save_path=json_path
+            save_path=json_path,
+            baseline_reward=args.baseline_reward
         )
     # just pull the file
     elif args.mode == 'plot':

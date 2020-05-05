@@ -317,8 +317,10 @@ def main():
 
     args = parse_config()
     log_path, checkpoint_dir, run_id = log_this(args, args.log_dir, args.log_name)
-    logging.basicConfig(filename=log_path, level=logging.DEBUG)
-    logging.addHandler(logging.StreamHandler())
+    logging.basicConfig(format='%(message)s', filename=log_path, level=logging.DEBUG)
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG)
+    logging.getLogger('').addHandler(console)
     args.run_id = run_id
     args.checkpoint_dir = checkpoint_dir
 
