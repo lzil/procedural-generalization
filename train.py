@@ -1,4 +1,6 @@
-from baselines.ppo2 import ppo2
+#from baselines.ppo2 import ppo2
+# use this for better logging capability
+import helpers.baselines_ppo2 as ppo2
 from baselines.common.models import build_impala_cnn
 from baselines.common.mpi_util import setup_mpi_gpus
 from procgen import ProcgenEnv
@@ -140,7 +142,8 @@ def main():
         init_fn=None,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        load_path=args.load_path
+        load_path=args.load_path,
+        run_id=run_id
     )
 
     sess.close()

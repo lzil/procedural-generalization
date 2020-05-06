@@ -11,6 +11,7 @@ train-procgen/
 reward_models/
 policy_models/
 
+experts/
 *dems/
 
 *.pth
