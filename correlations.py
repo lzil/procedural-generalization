@@ -44,11 +44,11 @@ def get_id(path):
 def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, max_set_size=200, save_path=None, verbose=False, baseline_reward=False):
     print('Calculating correlations of reward models.')
 
-    # figure out which reward models to use
-    # baseline reward is for using a proxy (currently demo length) as the reward
+    # baseline reward is for using a proxy (currently demo length) as the reward, so don't need any in that case
     if baseline_reward:
         print('== Calculating baseline reward - completely skipping the use of reward models.')
     else:
+        # figure out which reward models to use
         print(f'== r_constraints: {r_constraints}')
         with open(os.path.join(reward_dir, 'reward_model_infos.csv')) as master:
             reader = csv.DictReader(master, delimiter=',')
@@ -76,10 +76,10 @@ def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, 
     print(f'== Using {len(demos)} demonstrations.')
     
     # do actual correlation calculations
-
     if baseline_reward:
         rs = []
         for dem in demos:
+            # using length as the proxy
             r_prediction = len(dem['observations'])
             r_true = dem['return']
 

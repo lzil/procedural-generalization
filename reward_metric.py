@@ -20,7 +20,7 @@ from helpers.ProxyRewardWrapper import ProxyRewardWrapper
 import helpers.baselines_ppo2 as ppo2
 
 # function should be used more generally
-def get_corr_with_ground(demos, reward_path, verbose=True, baseline_reward=False):
+def get_corr_with_ground(demos, reward_path, verbose=True):
 
     # load learned reward model
     net = RewardNet()
@@ -28,11 +28,7 @@ def get_corr_with_ground(demos, reward_path, verbose=True, baseline_reward=False
     net.load_state_dict(torch.load(reward_path, map_location=torch.device('cpu')))
     rs = []
     for dem in demos:
-        if baseline_reward:
-            r_prediction = len(dem['observations'])
-        else:
-            r_prediction = np.sum(net.predict_batch_rewards(dem['observations']))
-        
+        r_prediction = np.sum(net.predict_batch_rewards(dem['observations']))
         r_true = dem['return']
 
         rs.append((r_true, r_prediction))
