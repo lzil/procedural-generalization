@@ -18,5 +18,5 @@ for (seed, env_name, mode, num_dems, max_return, sequential) in \
 product(range(args.num_seeds),args.env_name, args.distribution_mode,
 		args.num_dems, args.max_return, args.sequential):
 
-	subprocess.call(f"python train_reward.py --env_name={env_name} --distribution_mode={mode} \
+	subprocess.call(f"python debug_train_reward.py --env_name={env_name} --distribution_mode={mode} \
 					--num_dems={num_dems} --max_return={max_return} --sequential={sequential}", shell=True)

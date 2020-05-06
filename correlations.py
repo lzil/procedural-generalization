@@ -15,6 +15,7 @@ from scipy.stats import spearmanr
 
 from helpers.utils import log_this
 from reward_metric import get_corr_with_ground
+from train_reward import get_demo
 
 
 # helper function for filtering rows in a csv
@@ -59,6 +60,7 @@ def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, 
                     continue
                 rows.append(row)
         print(f'== Evaluating {len(rows)} reward models.')
+
     
     # figure out which demonstrations to use and load them
     print(f'== d_constraints: {d_constraints}')
@@ -69,7 +71,9 @@ def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, 
             # making sure constraints are satisfied
             if not retain_row(row, d_constraints):
                 continue
-            demos.append(pickle.load(open(row['path'], "rb")))
+
+            demos.append(get_demo(row['path']))
+
             # limit the total number of demonstrations we compute correlation on
             if len(demos) >= max_set_size:
                 break
