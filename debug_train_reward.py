@@ -231,6 +231,7 @@ class RewardTrainer:
                     self.save_model()
                     max_val_acc = val_acc
                     eps_no_max = 0
+                    accs = (train_acc, val_acc, test_acc, pearson, spearman)
                 else:
                     eps_no_max += 1
 
@@ -242,7 +243,7 @@ class RewardTrainer:
                     
 
         logging.info("finished training")
-        return os.path.join(self.args.checkpoint_dir, 'reward_final.pth')
+        return os.path.join(self.args.checkpoint_dir, 'reward_final.pth'), accs
 
     # save the final learned model
     def save_model(self):
@@ -292,7 +293,7 @@ def parse_config():
         help = '0 means not sequential, any other number creates sequential env with start_level = args.sequential')
 
 
-    parser.add_argument('--num_dems',type=int, default = 12 , help = 'Number of demonstrations to train on')
+    parser.add_argument('--num_dems',type=int, default = 12 , help = 'Number off demonstrations to train on')
     parser.add_argument('--max_return',type=float , default = 1.0, 
                         help = 'Maximum return of the provided demonstrations as a fraction of max available return')
     parser.add_argument('--num_snippets', default=50000, type=int, help="number of short subtrajectories to sample")
@@ -301,21 +302,22 @@ def parse_config():
     
     parser.add_argument('--epoch_size', default = 2000, type=int, help ='How often to measure validation accuracy')
     parser.add_argument('--max_num_epochs', type = int, default = 100, help = 'Number of epochs for reward learning')
+    parser.add_argument('--patience', type = int, default = 6, help = 'early stopping patience')
     
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
-    parser.add_argument('--log_dir', default='trex/debug_reward_models/logs', help='general logs directory')
+    parser.add_argument('--log_dir', default='trex/reward_models/logs', help='general logs directory')
     parser.add_argument('--log_name', default='', help='specific name for this run')
 
     parser.add_argument('--log_to_file', action='store_true', help='print to a specific log file instead of console')
 
-    parser.add_argument('--save_dir', default='trex/debug_reward_models', help='where the models and csv get stored')
+    parser.add_argument('--save_dir', default='trex/reward_models', help='where the models and csv get stored')
     
     args = parser.parse_args()
 
     args.lr = 0.00005
     args.weight_decay = 0.0
     args.lam_l1=0
-    args.patience = 6
+    
     args.stochastic = True
 
     if args.config is not None:
@@ -323,15 +325,17 @@ def parse_config():
 
     return args
 
-def store_model(state_dict_path, max_return, max_length, args):
+def store_model(state_dict_path, max_return, max_length, accs, args):
 
-    info_path = args.save_dir + '/debug_reward_model_infos.csv'
+    info_path = args.save_dir + '/reward_model_infos.csv'
 
     if not os.path.exists(info_path):
         with open(info_path, 'w') as f: 
             rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
             rew_writer.writerow(['path', 'method', 'env_name', 'mode',
-                                 'num_dems', 'max_return', 'max_length', 'sequential', 'log_path'])
+                                 'num_dems', 'max_return', 'max_length',
+                                'sequential', 'train_acc','val_acc',
+                                'test_acc','pearson','spearman' ,'log_path'])
 
     model_dir = args.save_dir + '/model_files'
     os.makedirs(model_dir, exist_ok=True)
@@ -339,10 +343,12 @@ def store_model(state_dict_path, max_return, max_length, args):
     save_path = os.path.join(model_dir, str(args.seed)[:3] + '_' + str(args.seed)[3:] + '.rm')
     copy2(state_dict_path, save_path)
 
+    train_acc, val_acc, test_acc, pearson, spearman = accs
     with open(info_path, 'a') as f: 
         rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         rew_writer.writerow([save_path, 'T-REX', args.env_name, args.distribution_mode,
-                            args.num_dems, max_return, max_length, args.sequential, args.log_path])
+                            args.num_dems, max_return, max_length, args.sequential,
+                            train_acc, val_acc, test_acc, pearson, spearman, args.log_path])
 def get_demo(file_name):
     #searches for the demo with the given name in all subfolders,
     #then loads it and returns 
@@ -385,7 +391,7 @@ def main():
     # here is where the T-REX procedure begins
 
 
-    demo_infos = pd.read_csv('trex/fruit_dems/demo_infos.csv')
+    demo_infos = pd.read_csv('trex/demos/demo_infos.csv')
 
     demo_infos = demo_infos[demo_infos['env_name']==args.env_name]
     demo_infos = demo_infos[demo_infos['mode']==args.distribution_mode]
@@ -440,7 +446,7 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     trainer = RewardTrainer(args, device)
 
-    state_dict_path = trainer.learn_reward(training_data, test_dems, test_set)
+    state_dict_path, accs = trainer.learn_reward(training_data, test_dems, test_set)
 
     # print out predicted cumulative returns and actual returns
 
@@ -451,7 +457,7 @@ def main():
 
     logging.info(f"Final train set accuracy {trainer.calc_accuracy(training_data[0][:5000])}")
 
-    store_model(state_dict_path, max_demo_return, max_demo_length, args)
+    store_model(state_dict_path, max_demo_return, max_demo_length, accs, args)
 
 
 if __name__=="__main__":
