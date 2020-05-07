@@ -94,7 +94,7 @@ with open (info_path, 'a') as csvfile:
         demo = runner.collect_episodes(1)[0]
         demo['env_name'] = args.env_name
         demo['mode'] = args.distribution_mode
-        demo['path'] = os.path.join(demo_dir, file_name)
+        demo['path'] = file_name
         demo['set_name'] = set_name
         demo['sequential'] = args.sequential
 

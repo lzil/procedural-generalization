@@ -301,8 +301,8 @@ def parse_config():
     parser.add_argument('--max_snippet_length', default=100, type=int, help="Max length of tracjectory for training comparison")
     
     parser.add_argument('--epoch_size', default = 2000, type=int, help ='How often to measure validation accuracy')
-    parser.add_argument('--max_num_epochs', type = int, default = 1000, help = 'Number of epochs for reward learning')
-    parser.add_argument('--patience', type = int, default = 6000, help = 'early stopping patience')
+    parser.add_argument('--max_num_epochs', type = int, default = 50, help = 'Number of epochs for reward learning')
+    parser.add_argument('--patience', type = int, default = 6, help = 'early stopping patience')
     
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
     parser.add_argument('--log_dir', default='trex/reward_models/logs', help='general logs directory')
@@ -396,6 +396,7 @@ def main():
     demo_infos = demo_infos[demo_infos['env_name']==args.env_name]
     demo_infos = demo_infos[demo_infos['mode']==args.distribution_mode]
     demo_infos = demo_infos[demo_infos['sequential'] == args.sequential]
+    demo_infos = demo_infos[demo_infos['length'] > args.min_snippet_length]
 
     test_demo_infos = demo_infos[demo_infos['set_name']=='TEST'] 
 
