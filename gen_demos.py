@@ -98,7 +98,7 @@ with open (info_path, 'a') as csvfile:
         demo['set_name'] = set_name
         demo['sequential'] = args.sequential
 
-        pickle.dump(demo, open(demo['path'], 'wb'))
+        pickle.dump(demo, open(os.path.join(demo_dir, file_name), 'wb'))
         writer.writerow(demo)
 
         num_generated += 1
