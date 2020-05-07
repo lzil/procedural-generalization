@@ -7,9 +7,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import argparse
 parser = argparse.ArgumentParser(description='Default arguments to initialize and load the model and env')
 parser.add_argument('--env_name', type=str, default='chaser')
-parser.add_argument('--distribution_mode', type=str, default='hard', choices=["easy", "hard", "exploration", "memory", "extreme"])
-parser.add_argument('--num_levels', type=int, default=1)
-parser.add_argument('--start_level', type=int, default=1)
+parser.add_argument('--distribution_mode', type=str, default='easy', choices=["easy", "hard", "exploration", "memory", "extreme"])
+parser.add_argument('--num_levels', type=int, default=0)
+parser.add_argument('--start_level', type=int, default=0)
 parser.add_argument('--max_steps', type=int, default=10000)
 parser.add_argument('--num_runs', type = int, default=128)
 parser.add_argument('--load_path', type=str, default = 'trex/reward_model_chaser',

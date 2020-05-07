@@ -31,22 +31,49 @@ from helpers.utils import *
 
 import argparse
 
+
 log = None
 
+from scipy.stats import pearsonr
+from scipy.stats import spearmanr
+def get_corr_with_ground(demos, net, verbose=False, baseline_reward=False):
 
-def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length):
+    rs = []
+    for dem in demos:
+        if baseline_reward:
+            r_prediction = len(dem['observations'])
+        else:
+            r_prediction = np.sum(net.predict_batch_rewards(dem['observations']))
+        
+        r_true = dem['return']
+
+        rs.append((r_true, r_prediction))
+
+    # calculate correlations and print them
+    rs_by_var = list(zip(*rs))
+    pearson_r, pearson_p = pearsonr(rs_by_var[0], rs_by_var[1])
+    spearman_r, spearman_p = spearmanr(rs)
+
+    if verbose:
+        print(f'(pearson_r, spearman_r): {(pearson_r, spearman_r)}')
+
+    return (pearson_r, spearman_r)
+
+
+def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length, verbose = True):
     """
     This function takes a set of demonstrations and produces 
     a training set consisting of pairs of clips with assigned preferences
     """
 
     #Print out some info
-    logging.info( f' {len(dems)} demonstrations provided')
-    logging.info(f"demo lengths : {[d['length'] for d in dems]}")
-    logging.info(f"demo returns : {[d['return'] for d in dems]}")
-    demo_lens = [d['length'] for d in dems]
-    logging.info(f'demo length: min = {min(demo_lens)}, max = {max(demo_lens)}')
-    assert min_snippet_length < min(demo_lens), "One of the trajectories is too short"
+    if verbose:
+        logging.info( f' {len(dems)} demonstrations provided')
+        logging.info(f"demo lengths : {[d['length'] for d in dems]}")
+        logging.info(f"demo returns : {[d['return'] for d in dems]}")
+        demo_lens = [d['length'] for d in dems]
+        logging.info(f'demo length: min = {min(demo_lens)}, max = {max(demo_lens)}')
+        assert min_snippet_length < min(demo_lens), "One of the trajectories is too short"
     
     training_data = []
     validation_data = []
@@ -147,7 +174,7 @@ class RewardTrainer:
         self.args = args
 
     # Train the network
-    def learn_reward(self, training_data):
+    def learn_reward(self, training_data, test_dems, test_set):
         loss_criterion = nn.CrossEntropyLoss()
         optimizer = optim.Adam(self.net.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
         
@@ -155,55 +182,68 @@ class RewardTrainer:
 
         max_val_acc = 0 
         eps_no_max = 0
-        for epoch in range(self.args.max_num_epochs):
-            epoch_loss = 0
-            np.random.shuffle(training_set)
-            #each epoch consists of 5000 updates - NOT passing through whole test set.
-            for i, ([traj_i, traj_j], label) in enumerate(training_set[:self.args.epoch_size]):
 
-                traj_i = torch.from_numpy(traj_i).float().to(self.device)
-                traj_j = torch.from_numpy(traj_j).float().to(self.device)
-                label = torch.from_numpy(label).to(self.device)
 
-                optimizer.zero_grad()
+        with open (self.args.debug_csv, 'a') as csvfile:
+            writer = csv.writer(csvfile, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+            writer.writerow(['num_trainin_samples','trainin_acc', 'val_acc','test_acc', 'pearson', 'spearman'])
 
-                #forward + backward + optimize
-                outputs, abs_rewards = self.net.forward(traj_i, traj_j)
+            for epoch in range(self.args.max_num_epochs):
+                epoch_loss = 0
+                np.random.shuffle(training_set)
+                #each epoch consists of 5000 updates - NOT passing through whole test set.
+                for i, ([traj_i, traj_j], label) in enumerate(training_set[:self.args.epoch_size]):
 
-                outputs = outputs.unsqueeze(0)
+                    traj_i = torch.from_numpy(traj_i).float().to(self.device)
+                    traj_j = torch.from_numpy(traj_j).float().to(self.device)
+                    label = torch.from_numpy(label).to(self.device)
 
-                # TODO: consider l2 regularization?
-                #included with the optimizer weight_decay value
-                #https://pytorch.org/docs/stable/_modules/torch/optim/adam.html#Adam 
+                    optimizer.zero_grad()
 
-                l1_reg = abs_rewards * self.args.lam_l1
+                    #forward + backward + optimize
+                    outputs, abs_rewards = self.net.forward(traj_i, traj_j)
+
+                    outputs = outputs.unsqueeze(0)
+
+                    # TODO: consider l2 regularization?
+                    #included with the optimizer weight_decay value
+                    #https://pytorch.org/docs/stable/_modules/torch/optim/adam.html#Adam 
+
+                    l1_reg = abs_rewards * self.args.lam_l1
+                    
+                    loss = loss_criterion(outputs, label) + l1_reg
+                    loss.backward()
+                    optimizer.step()
+
+                    item_loss = loss.item()
+                    epoch_loss += item_loss
                 
-                loss = loss_criterion(outputs, label) + l1_reg
-                loss.backward()
-                optimizer.step()
+                train_acc = self.calc_accuracy(training_set[:1000])
+                val_acc = self.calc_accuracy(validation_set[:1000]) #keep validation set under 1000 samples
+                test_acc = self.calc_accuracy(test_set)
+                pearson, spearman = get_corr_with_ground(test_dems, self.net)
+                writer.writerow([epoch*self.args.epoch_size, train_acc, val_acc, test_acc, pearson, spearman])
 
-                item_loss = loss.item()
-                epoch_loss += item_loss
-                
-            val_acc = self.calc_accuracy(validation_set[:1000]) #keep validation set under 1000 samples
-            logging.info(f"epoch : {epoch},  loss : {epoch_loss:6.2f}, val accuracy : {val_acc:6.4f}, abs_rewards : {abs_rewards.item():5.2f}")
 
-            if val_acc > max_val_acc:
-                self.save_model()
-                max_val_acc = val_acc
-                eps_no_max = 0
-            else:
-                eps_no_max += 1
+                logging.info(f"num samples: {epoch*self.args.epoch_size},  loss : {epoch_loss:6.2f}, val accuracy : {val_acc:6.4f}, abs_rewards : {abs_rewards.item():5.2f}")
+                logging.info(f'pearson : {pearson:6.2f},spearman {spearman:6.2f}, train accuracy : {train_acc:6.4f}, test set accuracy : {test_acc:6.4f}')
+                if val_acc > max_val_acc:
+                    self.save_model()
+                    max_val_acc = val_acc
+                    eps_no_max = 0
+                    accs = (train_acc, val_acc, test_acc, pearson, spearman)
+                else:
+                    eps_no_max += 1
 
-            #Early stopping
-            if eps_no_max >= self.args.patience:
-                logging.info(f'Early stopping after epoch {epoch}')
-                self.net.load_state_dict(self.best_model)  #loading the model with the best validation accuracy
-                break
-                
+                #Early stopping
+                if eps_no_max >= self.args.patience:
+                    logging.info(f'Early stopping after epoch {epoch}')
+                    self.net.load_state_dict(self.best_model)  #loading the model with the best validation accuracy
+                    break
+                    
 
         logging.info("finished training")
-        return os.path.join(self.args.checkpoint_dir, 'reward_final.pth')
+        return os.path.join(self.args.checkpoint_dir, 'reward_final.pth'), accs
 
     # save the final learned model
     def save_model(self):
@@ -245,7 +285,7 @@ def parse_config():
     parser = argparse.ArgumentParser(description='Default arguments to initialize and load the model and env')
     parser.add_argument('-c', '--config', type=str, default=None)
 
-    parser.add_argument('--env_name', type=str, default='starpilot')
+    parser.add_argument('--env_name', type=str, default='fruitbot')
     parser.add_argument('--distribution_mode', type=str, default='easy',
         choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--seed', type = int, help="random seed for experiments")
@@ -253,7 +293,7 @@ def parse_config():
         help = '0 means not sequential, any other number creates sequential env with start_level = args.sequential')
 
 
-    parser.add_argument('--num_dems',type=int, default = 12 , help = 'Number of demonstrations to train on')
+    parser.add_argument('--num_dems',type=int, default = 12 , help = 'Number off demonstrations to train on')
     parser.add_argument('--max_return',type=float , default = 1.0, 
                         help = 'Maximum return of the provided demonstrations as a fraction of max available return')
     parser.add_argument('--num_snippets', default=50000, type=int, help="number of short subtrajectories to sample")
@@ -261,7 +301,8 @@ def parse_config():
     parser.add_argument('--max_snippet_length', default=100, type=int, help="Max length of tracjectory for training comparison")
     
     parser.add_argument('--epoch_size', default = 2000, type=int, help ='How often to measure validation accuracy')
-    parser.add_argument('--max_num_epochs', type = int, default = 100, help = 'Number of epochs for reward learning')
+    parser.add_argument('--max_num_epochs', type = int, default = 1000, help = 'Number of epochs for reward learning')
+    parser.add_argument('--patience', type = int, default = 6000, help = 'early stopping patience')
     
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
     parser.add_argument('--log_dir', default='trex/reward_models/logs', help='general logs directory')
@@ -276,7 +317,7 @@ def parse_config():
     args.lr = 0.00005
     args.weight_decay = 0.0
     args.lam_l1=0
-    args.patience = 6
+    
     args.stochastic = True
 
     if args.config is not None:
@@ -284,15 +325,17 @@ def parse_config():
 
     return args
 
-def store_model(state_dict_path, max_return, max_length, args):
+def store_model(state_dict_path, max_return, max_length, accs, args):
 
-    info_path = args.save_dir + '/reward_model_infos_wlogs.csv'
+    info_path = args.save_dir + '/reward_model_infos.csv'
 
     if not os.path.exists(info_path):
         with open(info_path, 'w') as f: 
             rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
             rew_writer.writerow(['path', 'method', 'env_name', 'mode',
-                                 'num_dems', 'max_return', 'max_length', 'sequential', 'log_path'])
+                                 'num_dems', 'max_return', 'max_length',
+                                'sequential', 'train_acc','val_acc',
+                                'test_acc','pearson','spearman' ,'log_path'])
 
     model_dir = args.save_dir + '/model_files'
     os.makedirs(model_dir, exist_ok=True)
@@ -300,10 +343,12 @@ def store_model(state_dict_path, max_return, max_length, args):
     save_path = os.path.join(model_dir, str(args.seed)[:3] + '_' + str(args.seed)[3:] + '.rm')
     copy2(state_dict_path, save_path)
 
+    train_acc, val_acc, test_acc, pearson, spearman = accs
     with open(info_path, 'a') as f: 
         rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         rew_writer.writerow([save_path, 'T-REX', args.env_name, args.distribution_mode,
-                            args.num_dems, max_return, max_length, args.sequential, args.log_path])
+                            args.num_dems, max_return, max_length, args.sequential,
+                            train_acc, val_acc, test_acc, pearson, spearman, args.log_path])
 def get_demo(file_name):
     #searches for the demo with the given name in all subfolders,
     #then loads it and returns 
@@ -318,6 +363,7 @@ def main():
 
     args = parse_config()
     log_path, checkpoint_dir, run_id = log_this(args, args.log_dir, args.log_name)
+    args.debug_csv = os.path.join(args.log_dir, run_id, 'debug_rm_info.csv')
     args.log_path = log_path
     logging.basicConfig(format='%(message)s', filename=log_path, level=logging.DEBUG)
     # logging.addHandler(logging.StreamHandler())
@@ -345,13 +391,24 @@ def main():
     # here is where the T-REX procedure begins
 
 
-    demo_infos = pd.read_csv('trex/fruit_dems/demo_infos.csv')
+    demo_infos = pd.read_csv('trex/demos/demo_infos.csv')
 
     demo_infos = demo_infos[demo_infos['env_name']==args.env_name]
     demo_infos = demo_infos[demo_infos['mode']==args.distribution_mode]
     demo_infos = demo_infos[demo_infos['sequential'] == args.sequential]
+
+    test_demo_infos = demo_infos[demo_infos['set_name']=='TEST'] 
+
     demo_infos = demo_infos[demo_infos['set_name']=='TRAIN']
-    
+
+
+    #acquiring test demos for correlations and test accuracy
+    file_names = np.random.choice(test_demo_infos['path'], 100)
+    test_dems = [get_demo(fname) for fname in file_names]
+
+    test_set, _ = create_training_data(test_dems, 1000, args.min_snippet_length, args.max_snippet_length, verbose = False)
+
+
     logging.info(f'{len(demo_infos)} demonstrations available')
 
     
@@ -389,7 +446,7 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     trainer = RewardTrainer(args, device)
 
-    state_dict_path = trainer.learn_reward(training_data)
+    state_dict_path, accs = trainer.learn_reward(training_data, test_dems, test_set)
 
     # print out predicted cumulative returns and actual returns
 
@@ -400,7 +457,7 @@ def main():
 
     logging.info(f"Final train set accuracy {trainer.calc_accuracy(training_data[0][:5000])}")
 
-    store_model(state_dict_path, max_demo_return, max_demo_length, args)
+    store_model(state_dict_path, max_demo_return, max_demo_length, accs, args)
 
 
 if __name__=="__main__":

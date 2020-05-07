@@ -186,7 +186,7 @@ class RewardTrainer:
 
         with open (self.args.debug_csv, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-            writer.writerow(['epoch_num','trainin_acc', 'val_acc','test_acc', 'pearson', 'spearman'])
+            writer.writerow(['num_trainin_samples','trainin_acc', 'val_acc','test_acc', 'pearson', 'spearman'])
 
             for epoch in range(self.args.max_num_epochs):
                 epoch_loss = 0
@@ -222,10 +222,10 @@ class RewardTrainer:
                 val_acc = self.calc_accuracy(validation_set[:1000]) #keep validation set under 1000 samples
                 test_acc = self.calc_accuracy(test_set)
                 pearson, spearman = get_corr_with_ground(test_dems, self.net)
-                writer.writerow([epoch, train_acc, val_acc, test_acc, pearson, spearman])
+                writer.writerow([epoch*self.args.epoch_size, train_acc, val_acc, test_acc, pearson, spearman])
 
 
-                logging.info(f"epoch : {epoch},  loss : {epoch_loss:6.2f}, val accuracy : {val_acc:6.4f}, abs_rewards : {abs_rewards.item():5.2f}")
+                logging.info(f"num samples: {epoch*self.args.epoch_size},  loss : {epoch_loss:6.2f}, val accuracy : {val_acc:6.4f}, abs_rewards : {abs_rewards.item():5.2f}")
                 logging.info(f'pearson : {pearson:6.2f},spearman {spearman:6.2f}, train accuracy : {train_acc:6.4f}, test set accuracy : {test_acc:6.4f}')
                 if val_acc > max_val_acc:
                     self.save_model()
@@ -300,9 +300,9 @@ def parse_config():
     parser.add_argument('--min_snippet_length', default=20, type=int, help="Min length of tracjectory for training comparison")
     parser.add_argument('--max_snippet_length', default=100, type=int, help="Max length of tracjectory for training comparison")
     
-    parser.add_argument('--epoch_size', default = 2000, type=int, help ='How often to measure validation accuracy')
-    parser.add_argument('--max_num_epochs', type = int, default = 100, help = 'Number of epochs for reward learning')
-    parser.add_argument('--patience', type = int, default = 6, help = 'early stopping patience')
+    parser.add_argument('--epoch_size', default = 10, type=int, help ='How often to measure validation accuracy')
+    parser.add_argument('--max_num_epochs', type = int, default = 1000, help = 'Number of epochs for reward learning')
+    parser.add_argument('--patience', type = int, default = 6000, help = 'early stopping patience')
     
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
     parser.add_argument('--log_dir', default='trex/reward_models/logs', help='general logs directory')
