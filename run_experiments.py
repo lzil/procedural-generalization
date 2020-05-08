@@ -16,6 +16,7 @@ parser.add_argument('--sequential', nargs = '+', type = int, default=[0])
 parser.add_argument('--max_num_epochs', default=None)
 parser.add_argument('--epoch_size', default=None)
 parser.add_argument('--demo_csv_path', default=None)
+parser.add_argument('--patience', default=None)
 
 parser.add_argument('--config', type=str)  
 
@@ -38,6 +39,8 @@ product(range(args.num_seeds),args.env_name, args.distribution_mode,
 
     if args.max_num_epochs is not None:
         command.append(f'--max_num_epochs={args.max_num_epochs}')
+    if args.patience is not None:
+        command.append(f'--patience={args.patience}')
     if args.epoch_size is not None:
         command.append(f'--epoch_size={args.epoch_size}')
     # note: i'm using this because i have separate demo folders for each env
