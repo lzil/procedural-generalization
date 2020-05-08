@@ -381,7 +381,7 @@ def main():
         seed = args.seed 
     else:
         seed = args.seed = random.randint(1e6,1e7-1)
-    logging.info(f'seed: {seed}')
+    logging.info(f'Seed: {seed}')
 
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)

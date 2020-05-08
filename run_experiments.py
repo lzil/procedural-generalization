@@ -18,7 +18,7 @@ parser.add_argument('--epoch_size', default=None)
 parser.add_argument('--demo_csv_path', default=None)
 parser.add_argument('--patience', default=None)
 
-parser.add_argument('--config', type=str)  
+parser.add_argument('--config', default=None, type=str)  
 
 args = parser.parse_args()
 
@@ -50,6 +50,6 @@ product(range(args.num_seeds),args.env_name, args.distribution_mode,
 
     command = ' '.join(command)
 
-    print(f'Running: {command}')
+    #subprocess.call(f'echo Running: {command}', shell=True)
 
     subprocess.call(command, shell=True)
