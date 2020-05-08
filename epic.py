@@ -60,7 +60,7 @@ class EpicDataset(Dataset):
             self.s_1.extend(demo['s_1'])
             self.Rs.extend(reward_function(demo['observations']))            
             self.Rt.extend(demo['rewards'])
-            print(len(self.s))
+
         assert len(self.s) == len(self.s_1) == len(self.Rs) == len(self.a) == len(self.Rt)
 
         self.s = np.array(self.s, dtype=np.float32)
@@ -91,12 +91,12 @@ def approximate_EPIC(reward_function, D):
     #initialize potential shaping funtion
     SH = PotentialNet().to(device)
     #find initaial nu and c that are close to optimal
-    v, c = least_l2_affine(dataset.Rs, dataset.Rt)
+    v, c  = least_l2_affine(dataset.Rs, dataset.Rt)
     v = torch.tensor(v, dtype=torch.float32, device=device, requires_grad=True) 
     c = torch.tensor(c, dtype=torch.float32, device=device, requires_grad=True) 
     
     l = nn.MSELoss(reduction = 'sum')
-    optimizer = optim.Adam(list(SH.parameters())+[v, c], lr=0.001, weight_decay=0.001)
+    optimizer = optim.Adam(list(SH.parameters())+[v, c], lr=0.003, weight_decay=0.001)
     print(f'total transitions = {len(dataset)}')
 
     print('Starting training')
@@ -148,7 +148,7 @@ def main():
     demo_infos = demo_infos[demo_infos['sequential'] == args.sequential]
 
     dems = []
-    for f_name in demo_infos['path'][:100]:
+    for f_name in demo_infos['path'][:200]:
         dems.append(get_demo(f_name))
 
     approximate_EPIC(reward_function, dems)
