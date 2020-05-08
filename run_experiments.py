@@ -22,9 +22,13 @@ parser.add_argument('--config', default=None, type=str)
 
 args = parser.parse_args()
 
+n_exps = 0
+
 for (seed, env_name, mode, num_dems, max_return, sequential) in \
 product(range(args.num_seeds),args.env_name, args.distribution_mode,
 		args.num_dems, args.max_return, args.sequential):
+
+    n_exps += 1
 
     command = ['python', 'train_reward.py']
 
@@ -53,3 +57,5 @@ product(range(args.num_seeds),args.env_name, args.distribution_mode,
     #subprocess.call(f'echo Running: {command}', shell=True)
 
     subprocess.call(command, shell=True)
+
+print(f'Ran {n_exps} experiments.')

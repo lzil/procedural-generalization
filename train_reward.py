@@ -243,11 +243,11 @@ class RewardTrainer:
                     
 
         logging.info("finished training")
-        return os.path.join(self.args.checkpoint_dir, 'reward_final.pth'), accs
+        return os.path.join(self.args.checkpoint_dir, 'reward_best.pth'), accs
 
     # save the final learned model
     def save_model(self):
-        torch.save(self.net.state_dict(), os.path.join(self.args.checkpoint_dir, 'reward_final.pth'))
+        torch.save(self.net.state_dict(), os.path.join(self.args.checkpoint_dir, 'reward_best.pth'))
         self.best_model = copy.deepcopy(self.net.state_dict())
 
     # calculate and return accuracy on entire training set
