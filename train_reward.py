@@ -433,9 +433,10 @@ def main():
             #make sure we have only unique demos
             new_paths = demo_infos[~demo_infos['path'].isin(paths)]['path']
             #choose random demo and append
-            file_name = np.random.choice(new_paths, 1).item()
-            paths.append(file_name)
-            dems.append(get_demo(file_name))
+            if len(new_paths) > 0:
+                file_name = np.random.choice(new_paths, 1).item()
+                paths.append(file_name)
+                dems.append(get_demo(file_name))
             high += rew_step
     
     max_demo_return = max([demo['return'] for demo in dems])
