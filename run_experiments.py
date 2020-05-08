@@ -12,6 +12,7 @@ parser.add_argument('--num_seeds', type = int, default=5, help="number of random
 parser.add_argument('--max_return',type=float , default = [1.0], nargs = '+', 
                         help = 'Maximum return of the provided demonstrations as a fraction of max available return')
 parser.add_argument('--sequential', nargs = '+', type = int, default=[0])  
+<<<<<<< Updated upstream
 
 parser.add_argument('--max_num_epochs', default=None)
 parser.add_argument('--epoch_size', default=None)
@@ -19,6 +20,9 @@ parser.add_argument('--demo_csv_path', default=None)
 parser.add_argument('--patience', default=None)
 
 parser.add_argument('--config', default=None, type=str)  
+=======
+parser.add_argument('--config', nargs = '+', default = ['trex/configs/null.yaml'], type=str)  
+>>>>>>> Stashed changes
 
 args = parser.parse_args()
 
