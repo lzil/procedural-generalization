@@ -310,6 +310,8 @@ def parse_config():
 
     parser.add_argument('--log_to_file', action='store_true', help='print to a specific log file instead of console')
 
+    parser.add_argument('--demo_csv_path', default='trex/demos/demo_infos.csv', help='path to csv file with demo info')
+
     parser.add_argument('--save_dir', default='trex/reward_models', help='where the models and csv get stored')
     
     args = parser.parse_args()
@@ -391,7 +393,7 @@ def main():
     # here is where the T-REX procedure begins
 
 
-    demo_infos = pd.read_csv('trex/demos/demo_infos.csv')
+    demo_infos = pd.read_csv(args.demo_csv_path)
 
     demo_infos = demo_infos[demo_infos['env_name']==args.env_name]
     demo_infos = demo_infos[demo_infos['mode']==args.distribution_mode]
