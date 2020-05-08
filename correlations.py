@@ -219,7 +219,7 @@ def parse_args():
     parser.add_argument('--distribution_mode', default='easy')
     parser.add_argument('--sequential', default='0', type=str)
 
-    parser.add_argument('--demo_dir', default='trex/star_dems')
+    parser.add_argument('--demo_dir', default='trex/demos')
     parser.add_argument('--reward_dir', default='trex/reward_models/')
 
     # use length of demonstration as proxy for demonstration reward

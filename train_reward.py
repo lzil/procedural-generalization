@@ -36,6 +36,7 @@ log = None
 
 from scipy.stats import pearsonr
 from scipy.stats import spearmanr
+
 def get_corr_with_ground(demos, net, verbose=False, baseline_reward=False):
 
     rs = []
@@ -85,9 +86,10 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
         #pick two random demos
         i1, i2 = np.random.choice(len(dems) ,2,  replace = False) 
         is_validation  = (i1 in val_idx) or (i2 in val_idx)   
-        # d1['return'] <= d2['return']
-        d0, d1 = sorted([dems[i1], dems[i2]], key = lambda x: x['return'])
-        
+        # make d0['return'] <= d1['return']
+        d0, d1 = sorted([dems[i1], dems[i2]], key = lambda x: x['return'])   
+        if d0['return'] == d1['return']:
+            continue
         #create random snippets
 
         #first adjust max stippet length such that we can pick
@@ -104,6 +106,7 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
         clip0  = d0['observations'][d0_start : d0_start+cur_len]
         clip1  = d1['observations'][d1_start : d1_start+cur_len]
 
+        
         if is_validation:
             validation_data.append(([clip0, clip1], np.array([1])))
         else:
