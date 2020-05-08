@@ -17,13 +17,13 @@ parser.add_argument('--max_num_epochs', default=None)
 parser.add_argument('--epoch_size', default=None)
 parser.add_argument('--demo_csv_path', default=None)
 
-parser.add_argument('--config', nargs = '+', type=str)  
+parser.add_argument('--config', type=str)  
 
 args = parser.parse_args()
 
 for (seed, env_name, mode, num_dems, max_return, sequential, config) in \
 product(range(args.num_seeds),args.env_name, args.distribution_mode,
-		args.num_dems, args.max_return, args.sequential, args.config):
+		args.num_dems, args.max_return, args.sequential):
 
     command = ['python', 'train_reward.py']
 
@@ -33,7 +33,7 @@ product(range(args.num_seeds),args.env_name, args.distribution_mode,
     command.append(f'--max_return={max_return}')
     command.append(f'--sequential={sequential}')
 
-    if len(args.config) > 0:
+    if args.config is not None > 0:
         command.append(f'--config={config}')
 
     if args.max_num_epochs is not None:
