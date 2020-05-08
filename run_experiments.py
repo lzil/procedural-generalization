@@ -22,7 +22,7 @@ parser.add_argument('--config', type=str)
 
 args = parser.parse_args()
 
-for (seed, env_name, mode, num_dems, max_return, sequential, config) in \
+for (seed, env_name, mode, num_dems, max_return, sequential) in \
 product(range(args.num_seeds),args.env_name, args.distribution_mode,
 		args.num_dems, args.max_return, args.sequential):
 
@@ -35,7 +35,7 @@ product(range(args.num_seeds),args.env_name, args.distribution_mode,
     command.append(f'--sequential={sequential}')
 
     if args.config is not None > 0:
-        command.append(f'--config={config}')
+        command.append(f'--config={args.config}')
 
     if args.max_num_epochs is not None:
         command.append(f'--max_num_epochs={args.max_num_epochs}')
