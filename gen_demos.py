@@ -29,10 +29,12 @@ parser.add_argument('--distribution_mode', type=str, default='easy',
     choices=["easy", "hard", "exploration", "memory", "extreme"])
 parser.add_argument('--test_set', action = 'store_true')
 parser.add_argument('--start_level', type=int, default=0)
-parser.add_argument('--num_dems', default=100, type=int, help="number of trajectories to use")
+parser.add_argument('--num_dems', default=100, type=int, help="number of demonstrations to use")
 parser.add_argument('--models_dir', type = str)
 parser.add_argument('--sequential', type = int, default=0)
-parser.add_argument('--logdir', type = str, default = 'trex/demos')
+parser.add_argument('--log_dir', type = str, default = 'trex/demos')
+parser.add_argument('--name', type = str, default = None)
+
 
 args = parser.parse_args()
 
@@ -48,26 +50,26 @@ procgen_fn_true = lambda seed: ProcgenEnv(
 )
 conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
 
+# check all the policy models in the folder to pull dems from
 model_files = [os.path.join(args.models_dir, f) for f in os.listdir(args.models_dir)]
 
 venv_fn = lambda: VecExtractDictObs(procgen_fn_true(0), "rgb")
 init_policy = ppo2.learn(env=venv_fn(), network=conv_fn, total_timesteps=0)
 
-
-info_path = args.logdir + '/demo_infos.csv'
-demo_dir = args.logdir + '/demo_files'
+info_path = f'{args.log_dir}/demo_infos_{args.name}.csv'
+demo_dir = f'{args.log_dir}/demo_files_{args.name}'
 
 if args.test_set:
-    set_name = 'TEST'
+    set_name = 'test'
 else:
-    set_name = 'TRAIN'
+    set_name = 'train'
 
 
 os.makedirs(demo_dir, exist_ok=True)
 file_exists = os.path.exists(info_path)
 
 with open (info_path, 'a') as csvfile:
-    headers = ['path','env_name','mode','length', 'return','set_name', 'sequential']
+    headers = ['demo_id','env_name','mode','length', 'return','set_name', 'sequential']
     writer = csv.DictWriter(csvfile, fieldnames=headers, extrasaction = 'ignore')
 
     if not file_exists:
@@ -75,13 +77,15 @@ with open (info_path, 'a') as csvfile:
 
     num_generated = 0
     while num_generated < args.num_dems:
-        seed = random.randint(1e8, 1e9 - 1)
-        file_name = '_'.join([str(seed)[0:3], str(seed)[3:6], str(seed)[6:9]]) + '.demo'
+        digits = ''.join([str(x) for x in np.random.randint(10, size=9)])
+        seed = int(digits)
         if args.test_set:
-            seed = int(1e9 + seed)
-            file_name = '1_' + file_name
+            seed += 1e9
+            demo_prefix = '1'
         else:
-            file_name = '0_' + file_name
+            demo_prefix = '0'
+        demo_id = '_'.join([demo_prefix, digits[0:3], digits[3:6], digits[6:9]])
+        file_name = demo_id + '.demo'
 
         if args.sequential:
             seed = args.sequential
@@ -94,7 +98,7 @@ with open (info_path, 'a') as csvfile:
         demo = runner.collect_episodes(1)[0]
         demo['env_name'] = args.env_name
         demo['mode'] = args.distribution_mode
-        demo['path'] = file_name
+        demo['demo_id'] = demo_id
         demo['set_name'] = set_name
         demo['sequential'] = args.sequential
 
@@ -102,5 +106,5 @@ with open (info_path, 'a') as csvfile:
         writer.writerow(demo)
 
         num_generated += 1
-        if num_generated % 20 == 0:
-            print(num_generated, ' collected')
+        if num_generated % 20 == 0 or num_generated == args.num_dems:
+            print(f'{num_generated}/{args.num_dems} demos collected')

@@ -189,7 +189,7 @@ class RewardTrainer:
 
         with open (self.args.debug_csv, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-            writer.writerow(['num_trainin_samples','trainin_acc', 'val_acc','test_acc', 'pearson', 'spearman'])
+            writer.writerow(['n_train_samples','train_acc', 'val_acc','test_acc', 'pearson', 'spearman'])
 
             for epoch in range(self.args.max_num_epochs):
                 epoch_loss = 0
@@ -228,8 +228,8 @@ class RewardTrainer:
                 writer.writerow([epoch*self.args.epoch_size, train_acc, val_acc, test_acc, pearson, spearman])
 
 
-                logging.info(f"num samples: {epoch*self.args.epoch_size},  loss : {epoch_loss:6.2f}, val accuracy : {val_acc:6.4f}, abs_rewards : {abs_rewards.item():5.2f}")
-                logging.info(f'pearson : {pearson:6.2f},spearman {spearman:6.2f}, train accuracy : {train_acc:6.4f}, test set accuracy : {test_acc:6.4f}')
+                logging.info(f"n_samples: {epoch*self.args.epoch_size:7g} | loss: {epoch_loss:6.2f} | val_acc: {val_acc:6.4f} | abs_rewards: {abs_rewards.item():5.2f}")
+                logging.info(f'  pc: {pearson:6.2f} | sc: {spearman:6.2f} | train_acc: {train_acc:6.4f} | test_acc : {test_acc:6.4f}')
                 if val_acc > max_val_acc:
                     self.save_model()
                     max_val_acc = val_acc
