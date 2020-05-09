@@ -38,7 +38,7 @@ product(range(args.num_seeds),args.env_name, args.distribution_mode,
     command.append(f'--max_return={max_return}')
     command.append(f'--sequential={sequential}')
 
-    if args.config is not None > 0:
+    if args.config is not None:
         command.append(f'--config={args.config}')
 
     if args.max_num_epochs is not None:

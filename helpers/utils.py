@@ -25,6 +25,7 @@ def add_yaml_args(args, config_file):
             #     logging.warning(f'{c} is not set to begin with: {v}')
     return args
 
+
 # produce run id and create log directory
 def log_this(config, log_dir, log_name=None, checkpoints=True):
     run_id = str(int(time.time()))[4:]
@@ -61,3 +62,4 @@ def log_this(config, log_dir, log_name=None, checkpoints=True):
 def get_id(path):
     rm_id = '.'.join(os.path.basename(path).split('.')[:-1])
     return rm_id
+
