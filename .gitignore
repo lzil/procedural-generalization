@@ -1,6 +1,7 @@
 playground/
 logs/
 demos/
+videos/
 old/
 __pycache__/
 .DS_Store
@@ -13,6 +14,7 @@ policy_models/
 
 experts/
 *dems/
+
 
 *.pth
 
