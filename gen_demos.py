@@ -80,7 +80,7 @@ with open (info_path, 'a') as csvfile:
         digits = ''.join([str(x) for x in np.random.randint(10, size=9)])
         seed = int(digits)
         if args.test_set:
-            seed += 1e9
+            seed += 1_000_000_000
             demo_prefix = '1'
         else:
             demo_prefix = '0'
