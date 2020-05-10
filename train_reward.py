@@ -61,7 +61,7 @@ def get_corr_with_ground(demos, net, verbose=False, baseline_reward=False):
     return (pearson_r, spearman_r)
 
 
-def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length, verbose = True):
+def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length, validation=True, verbose=True):
     """
     This function takes a set of demonstrations and produces 
     a training set consisting of pairs of clips with assigned preferences
@@ -79,13 +79,18 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
     training_data = []
     validation_data = []
     # pick 2 of demos to be validation demos
-    val_idx = np.random.choice(len(dems), int(len(dems)/6),  replace = False)
+    if validation:
+        val_idx = np.random.choice(len(dems), int(len(dems)/6),  replace = False)
 
     while len(training_data) < num_snippets:
 
         #pick two random demos
-        i1, i2 = np.random.choice(len(dems) ,2,  replace = False) 
-        is_validation  = (i1 in val_idx) or (i2 in val_idx)   
+        i1, i2 = np.random.choice(len(dems) ,2,  replace = False)
+
+        if validation:
+            is_validation = False
+        else:
+            is_validation = (i1 in val_idx) or (i2 in val_idx)   
         # make d0['return'] <= d1['return']
         d0, d1 = sorted([dems[i1], dems[i2]], key = lambda x: x['return'])   
         if d0['return'] == d1['return']:
@@ -313,7 +318,8 @@ def parse_config():
 
     parser.add_argument('--log_to_file', action='store_true', help='print to a specific log file instead of console')
 
-    parser.add_argument('--demo_csv_path', default='trex/demos/demo_infos.csv', help='path to csv file with demo info')
+    parser.add_argument('--demo_folder', nargs='+', default=['trex/demos'], help='path to folders with demos')
+    parser.add_argument('--demo_csv', nargs='+', default=['trex/demos/demo_infos.csv'], help='path to csv files with demo info')
 
     parser.add_argument('--save_dir', default='trex/reward_models', help='where the models and csv get stored')
     
@@ -351,9 +357,10 @@ def store_model(state_dict_path, max_return, max_length, accs, args):
     train_acc, val_acc, test_acc, pearson, spearman = accs
     with open(info_path, 'a') as f: 
         rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        rew_writer.writerow([save_path, 'T-REX', args.env_name, args.distribution_mode,
+        rew_writer.writerow([save_path, 'trex', args.env_name, args.distribution_mode,
                             args.num_dems, max_return, max_length, args.sequential,
                             train_acc, val_acc, test_acc, pearson, spearman, args.log_path])
+
 def get_demo(file_name):
     #searches for the demo with the given name in all subfolders,
     #then loads it and returns 
@@ -396,32 +403,43 @@ def main():
     
     # here is where the T-REX procedure begins
 
+    constraints = {
+        'env_name': args.env_name,
+        'mode': args.distribution_mode,
+        'demo_min_len': args.min_snippet_length,
+        'sequential': args.sequential
+    }
 
-    demo_infos = pd.read_csv(args.demo_csv_path)
-
-    demo_infos = demo_infos[demo_infos['env_name']==args.env_name]
-    demo_infos = demo_infos[demo_infos['mode']==args.distribution_mode]
-    demo_infos = demo_infos[demo_infos['sequential'] == args.sequential]
-    demo_infos = demo_infos[demo_infos['length'] > args.min_snippet_length]
-
-    test_demo_infos = demo_infos[demo_infos['set_name']=='TEST'] 
-
-    demo_infos = demo_infos[demo_infos['set_name']=='TRAIN']
-
+    for path in args.demo_csv:
+        train_rows = filter_csv_pandas(path, {**constraints, **{'set_name': 'train'}})
+        test_rows = filter_csv_pandas(path, {**constraints, **{'set_name': 'test'}})
 
     #acquiring test demos for correlations and test accuracy
-    file_names = np.random.choice(test_demo_infos['path'], 100)
-    test_dems = [get_demo(fname) for fname in file_names]
+    n_test_demos = 100
+    test_rows_n = np.random.choice(test_rows, n_test_demos)
+    test_dems = []
+    for dem in test_rows_n:
+        for folder in args.demo_folder:
+            fpath = os.path.join(folder, dem['seed'] + '.demo')
+            if os.path.is_file(fpath):
+                test_dems.append(get_demo(fpath))
+                break
 
-    test_set, _ = create_training_data(test_dems, 1000, args.min_snippet_length, args.max_snippet_length, verbose = False)
+    test_set, _ = create_training_data(
+        dems = test_dems,
+        num_snipets = 1000,
+        min_snippet_length = args.min_snippet_length,
+        max_snippet_length = args.max_snippet_length,
+        validation = False,
+        verbose = False
+    )
 
-
-    logging.info(f'{len(demo_infos)} demonstrations available')
+    logging.info(f'{len(train_rows)} training demonstrations available, {args.num_dems} requested')
 
     
     #implemening uniformish distribution of demo returns
-    max_return = (demo_infos.max()['return'] - demo_infos.min()['return']) * args.max_return
-    min_return = demo_infos.min()['return']
+    max_return = (train_rows.max()['return'] - train_rows.min()['return']) * args.max_return
+    min_return = train_rows.min()['return']
 
     rew_step  = (max_return - min_return)/ 4
     dems = []
@@ -432,9 +450,9 @@ def main():
         while (high <= max_return) and (len(dems) < args.num_dems):
             #crerate boundaries to pick the demos from, and filter demos accordingly
             low = high - rew_step
-            filtered_dems = demo_infos[(demo_infos['return'] > low) & (demo_infos['return']< high)]
+            filtered_dems = train_rows[(train_rows['return'] > low) & (train_rows['return']< high)]
             #make sure we have only unique demos
-            new_paths = demo_infos[~demo_infos['path'].isin(paths)]['path']
+            new_paths = train_rows[~train_rows['path'].isin(paths)]['path']
             #choose random demo and append
             if len(new_paths) > 0:
                 file_name = np.random.choice(new_paths, 1).item()

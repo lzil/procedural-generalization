@@ -13,31 +13,9 @@ import argparse
 from scipy.stats import pearsonr
 from scipy.stats import spearmanr
 
-from helpers.utils import log_this
+from helpers.utils import *
 from reward_metric import get_corr_with_ground
 from train_reward import get_demo
-
-
-# helper function for filtering rows in a csv
-def retain_row(row, constraints):
-    for k,v in constraints.items():
-        # respect maximum return constraints
-        if 'demo_max_return' in constraints:
-            if float(row['return']) > float(constraints['demo_max_return']):
-                return False
-        if 'rm_max_return' in constraints:
-            if float(row['max_return']) > float(constraints['rm_max_return']):
-                return False
-
-        # all other constraints
-        if row[k] != v:
-            return False
-    return True
-
-# extract id from the path. a bit hacky but should get the job done
-def get_id(path):
-    rm_id = '.'.join(os.path.basename(path).split('.')[:-1])
-    return rm_id
 
 
 # takes in directory of reward models and demonstrations, and appropriate constraints,
@@ -51,32 +29,14 @@ def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, 
     else:
         # figure out which reward models to use
         print(f'== r_constraints: {r_constraints}')
-        with open(os.path.join(reward_dir, 'reward_model_infos.csv')) as master:
-            reader = csv.DictReader(master, delimiter=',')
-            # filtering rows
-            rows = []
-            for row in reader:
-                if not retain_row(row, r_constraints):
-                    continue
-                rows.append(row)
+        rows = filter_csv(os.path.join(reward_dir, 'reward_model_infos.csv'), r_constraints)
         print(f'== Evaluating {len(rows)} reward models.')
 
     
     # figure out which demonstrations to use and load them
     print(f'== d_constraints: {d_constraints}')
-    demos = []
-    with open(os.path.join(demo_dir, 'demo_infos.csv')) as master:
-        reader = csv.DictReader(master, delimiter=',')
-        for row in reader:
-            # making sure constraints are satisfied
-            if not retain_row(row, d_constraints):
-                continue
-
-            demos.append(get_demo(row['path']))
-
-            # limit the total number of demonstrations we compute correlation on
-            if len(demos) >= max_set_size:
-                break
+    rows = filter_csv(os.path.join(demo_dir, 'demo_infos.csv'), d_constraints)
+    demos = [get_demo(row['path']) for row in rows]
     print(f'== Using {len(demos)} demonstrations.')
     
     # do actual correlation calculations
@@ -235,7 +195,7 @@ def main():
     args = parse_args()
 
     demo_constraints = {
-        'set_name': 'TEST',
+        'set_name': 'test',
         'env_name': args.env_name,
         'mode': args.distribution_mode,
         'sequential': args.sequential
