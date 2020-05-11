@@ -56,8 +56,12 @@ model_files = [os.path.join(args.models_dir, f) for f in os.listdir(args.models_
 venv_fn = lambda: VecExtractDictObs(procgen_fn_true(0), "rgb")
 init_policy = ppo2.learn(env=venv_fn(), network=conv_fn, total_timesteps=0)
 
-info_path = f'{args.log_dir}/demo_infos_{args.name}.csv'
-demo_dir = f'{args.log_dir}/demo_files_{args.name}'
+if args.name is not None:
+    info_path = f'{args.log_dir}/demo_infos_{args.name}.csv'
+    demo_dir = f'{args.log_dir}/demo_files_{args.name}'
+else:
+    info_path = f'{args.log_dir}/demo_infos.csv'
+    demo_dir = f'{args.log_dir}/demo_files'
 
 if args.test_set:
     set_name = 'test'

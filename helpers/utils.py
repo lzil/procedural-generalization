@@ -30,8 +30,8 @@ def add_yaml_args(args, config_file):
 
 # produce run id and create log directory
 def log_this(config, log_dir, log_name=None, checkpoints=True):
-    run_id = str(int(time.time()))[4:]
-    print(f'Run id: {run_id}')
+    run_id = str(int(time.time() * 100))[-7:]
+    print(f'Run id: {run_id} with name {log_name}')
 
     if log_name is None or len(log_name) == 0:
         log_name = run_id

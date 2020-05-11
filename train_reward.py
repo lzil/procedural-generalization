@@ -313,8 +313,8 @@ def parse_config():
     parser.add_argument('--patience', type = int, default = 6, help = 'early stopping patience')
     
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
-    parser.add_argument('--log_dir', default='trex/reward_models/logs', help='general logs directory')
-    parser.add_argument('--log_name', default='', help='specific name for this run')
+    parser.add_argument('--log_dir', default='trex/logs', help='general logs directory')
+    parser.add_argument('--log_name', default=None, help='specific name for this run')
 
     parser.add_argument('--log_to_file', action='store_true', help='print to a specific log file instead of console')
 
@@ -322,6 +322,7 @@ def parse_config():
     parser.add_argument('--demo_csv', nargs='+', default=['trex/demos/demo_infos.csv'], help='path to csv files with demo info')
 
     parser.add_argument('--save_dir', default='trex/reward_models', help='where the models and csv get stored')
+    parser.add_argument('--save_name', default=None, help='suffix to the name of the csv/file folder for saving')
     
     args = parser.parse_args()
 
@@ -338,28 +339,31 @@ def parse_config():
 
 def store_model(state_dict_path, max_return, max_length, accs, args):
 
-    info_path = args.save_dir + '/reward_model_infos.csv'
+    csv_name = 'rm_infos.csv' if args.save_name is None else f'rm_infos_{args.save_name}.csv'
+    info_path = os.path.join(args.save_dir, csv_name)
 
     if not os.path.exists(info_path):
         with open(info_path, 'w') as f: 
             rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-            rew_writer.writerow(['path', 'method', 'env_name', 'mode',
+            rew_writer.writerow(['rm_id', 'method', 'env_name', 'mode',
                                  'num_dems', 'max_return', 'max_length',
                                 'sequential', 'train_acc','val_acc',
-                                'test_acc','pearson','spearman' ,'log_path'])
+                                'test_acc','pearson','spearman'])
 
-    model_dir = args.save_dir + '/model_files'
+    files_name = 'model_files' if args.save_name is None else f'model_files_{args.save_name}'
+    model_dir = os.path.join(args.save_dir, files_name)
     os.makedirs(model_dir, exist_ok=True)
 
+    rm_id = str(args.seed)[:3] + '_' + str(args.seed)[3:]
     save_path = os.path.join(model_dir, str(args.seed)[:3] + '_' + str(args.seed)[3:] + '.rm')
     copy2(state_dict_path, save_path)
 
     train_acc, val_acc, test_acc, pearson, spearman = accs
     with open(info_path, 'a') as f: 
         rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        rew_writer.writerow([save_path, 'trex', args.env_name, args.distribution_mode,
+        rew_writer.writerow([rm_id, 'trex', args.env_name, args.distribution_mode,
                             args.num_dems, max_return, max_length, args.sequential,
-                            train_acc, val_acc, test_acc, pearson, spearman, args.log_path])
+                            train_acc, val_acc, test_acc, pearson, spearman])
 
 def get_demo(file_name):
     #searches for the demo with the given name in all subfolders,
@@ -374,7 +378,20 @@ def get_demo(file_name):
 def main():
 
     args = parse_config()
-    log_path, checkpoint_dir, run_id = log_this(args, args.log_dir, args.log_name)
+
+    # do seed creation before log creation
+    if args.seed:
+        seed = args.seed 
+    else:
+        seed = random.randint(1e6,1e7-1)
+        args.seed = seed
+    rm_id = '_'.join([str(seed)[:3], str(seed)[3:]])
+    logging.info(f'reward model id: {rm_id}')
+
+    log_path, checkpoint_dir, run_id = log_this(args, args.log_dir, rm_id)
+    args.run_id = run_id
+    args.checkpoint_dir = checkpoint_dir
+
     args.debug_csv = os.path.join(args.log_dir, run_id, 'debug_rm_info.csv')
     args.log_path = log_path
     logging.basicConfig(format='%(message)s', filename=log_path, level=logging.DEBUG)
@@ -382,16 +399,6 @@ def main():
     console = logging.StreamHandler()
     console.setLevel(logging.DEBUG)
     logging.getLogger('').addHandler(console)
-
-    
-    args.run_id = run_id
-    args.checkpoint_dir = checkpoint_dir
-
-    if args.seed:
-        seed = args.seed 
-    else:
-        seed = args.seed = random.randint(1e6,1e7-1)
-    logging.info(f'Seed: {seed}')
 
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
