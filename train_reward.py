@@ -157,7 +157,7 @@ class RewardNet(nn.Module):
         if self.output_abs:
             r = torch.abs(self.model(x))
         else:
-            r = x
+            r = self.model(x)
         all_reward = torch.sum(r)
         all_reward_abs = torch.sum(torch.abs(r))
         return all_reward, all_reward_abs
@@ -170,7 +170,7 @@ class RewardNet(nn.Module):
             if self.output_abs:
                 r = torch.abs(self.model(x))
             else:
-                r = x
+                r = self.model(x) 
             return r.cpu().numpy().flatten()
 
     def forward(self, traj_i, traj_j):
@@ -405,8 +405,9 @@ def main():
     logging.basicConfig(format='%(message)s', filename=log_path, level=logging.DEBUG)
     console = logging.StreamHandler()
     console.setLevel(logging.DEBUG)
+    logging.getLogger('').addHandler(console)
 
-    logging.info(f'reward model id: {rm_id}')
+    logging.info(f'Reward model id: {rm_id}')
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic=True
@@ -416,8 +417,6 @@ def main():
     
     
     # here is where the T-REX procedure begins
-    print('Filtering demos', flush=True)
-
     constraints = {
         'env_name': args.env_name,
         'mode': args.distribution_mode,
@@ -429,9 +428,11 @@ def main():
         train_rows = filter_csv_pandas(path, {**constraints, **{'set_name': 'train'}})
         test_rows = filter_csv_pandas(path, {**constraints, **{'set_name': 'test'}})
 
-    logging.info(f'{len(train_rows)} training demonstrations available, {args.num_dems} requested')
+    logging.info(f'Filtered demos: {len(train_rows)} training demos available, {args.num_dems} requested')
 
     #acquiring test demos for correlations and test accuracy
+
+    logging.info('Creating testing data ...')
     n_test_demos = 100
     demo_ids_n = np.random.choice(test_rows['demo_id'], n_test_demos)
     test_dems = []
@@ -450,6 +451,8 @@ def main():
         validation = False,
         verbose = False
     )
+
+    logging.info('Creating training data ...')
 
     #implemening uniformish distribution of demo returns
     max_return = (train_rows.max()['return'] - train_rows.min()['return']) * args.max_return
@@ -472,7 +475,6 @@ def main():
                 chosen_seed = np.random.choice(new_seeds, 1).item()
                 for folder in args.demo_folder:
                     fpath = os.path.join(folder, chosen_seed + '.demo')
-                    print(fpath)
                     if os.path.isfile(fpath):
                         seeds.append(chosen_seed)
                         dems.append(get_demo(fpath))
@@ -481,8 +483,6 @@ def main():
     
     max_demo_return = max([demo['return'] for demo in dems])
     max_demo_length = max([demo['length'] for demo in dems])
-
-    logging.info('Creating training data ...')
 
     training_data = create_training_data(
         dems = dems,
@@ -493,7 +493,7 @@ def main():
         verbose = False)
 
     # train a reward network using the dems collected earlier and save it
-    logging.info("Training reward model for %s", args.env_name)
+    logging.info("Training reward model for %s ...", args.env_name)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     trainer = RewardTrainer(args, device)
 
