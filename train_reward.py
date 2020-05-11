@@ -88,9 +88,9 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
         i1, i2 = np.random.choice(len(dems) ,2,  replace = False)
 
         if validation:
-            is_validation = False
+            is_validation = (i1 in val_idx) or (i2 in val_idx)
         else:
-            is_validation = (i1 in val_idx) or (i2 in val_idx)   
+            is_validation = False
         # make d0['return'] <= d1['return']
         d0, d1 = sorted([dems[i1], dems[i2]], key = lambda x: x['return'])   
         if d0['return'] == d1['return']:
@@ -368,7 +368,7 @@ def store_model(state_dict_path, max_return, max_length, accs, args):
 def get_demo(file_name):
     #searches for the demo with the given name in all subfolders,
     #then loads it and returns 
-
+    print(file_name)
     path = glob.glob('./**/'+file_name, recursive=True)[0]
     demo = pickle.load(open(path, 'rb'))
 
@@ -388,7 +388,7 @@ def main():
     rm_id = '_'.join([str(seed)[:3], str(seed)[3:]])
     logging.info(f'reward model id: {rm_id}')
 
-    log_path, checkpoint_dir, run_id = log_this(args, args.log_dir, rm_id)
+    log_path, checkpoint_dir, run_id = log_this(args, args.log_dir, 'rm-' + rm_id)
     args.run_id = run_id
     args.checkpoint_dir = checkpoint_dir
 
@@ -421,36 +421,35 @@ def main():
         train_rows = filter_csv_pandas(path, {**constraints, **{'set_name': 'train'}})
         test_rows = filter_csv_pandas(path, {**constraints, **{'set_name': 'test'}})
 
+    logging.info(f'{len(train_rows)} training demonstrations available, {args.num_dems} requested')
+
     #acquiring test demos for correlations and test accuracy
     n_test_demos = 100
-    test_rows_n = np.random.choice(test_rows, n_test_demos)
+    demo_ids_n = np.random.choice(test_rows['demo_id'], n_test_demos)
     test_dems = []
-    for dem in test_rows_n:
+    for dem in demo_ids_n:
         for folder in args.demo_folder:
-            fpath = os.path.join(folder, dem['seed'] + '.demo')
-            if os.path.is_file(fpath):
+            fpath = os.path.join(folder, dem + '.demo')
+            if os.path.isfile(fpath):
                 test_dems.append(get_demo(fpath))
                 break
 
     test_set, _ = create_training_data(
         dems = test_dems,
-        num_snipets = 1000,
+        num_snippets = 1000,
         min_snippet_length = args.min_snippet_length,
         max_snippet_length = args.max_snippet_length,
         validation = False,
         verbose = False
     )
 
-    logging.info(f'{len(train_rows)} training demonstrations available, {args.num_dems} requested')
-
-    
     #implemening uniformish distribution of demo returns
     max_return = (train_rows.max()['return'] - train_rows.min()['return']) * args.max_return
     min_return = train_rows.min()['return']
 
     rew_step  = (max_return - min_return)/ 4
     dems = []
-    paths = []
+    seeds = []
     while len(dems) < args.num_dems:
 
         high = min_return + rew_step 
@@ -459,12 +458,15 @@ def main():
             low = high - rew_step
             filtered_dems = train_rows[(train_rows['return'] > low) & (train_rows['return']< high)]
             #make sure we have only unique demos
-            new_paths = train_rows[~train_rows['path'].isin(paths)]['path']
+            new_seeds = train_rows[~train_rows['demo_id'].isin(seeds)]['demo_id']
             #choose random demo and append
-            if len(new_paths) > 0:
-                file_name = np.random.choice(new_paths, 1).item()
-                paths.append(file_name)
-                dems.append(get_demo(file_name))
+            if len(new_seeds) > 0:
+                chosen_seed = np.random.choice(new_seeds, 1).item()
+                for folder in args.demo_folder:
+                    fpath = os.path.join(folder, chosen_seed + '.demo')
+                    if os.path.isfile(fpath):
+                        seeds.append(chosen_seed)
+                        dems.append(get_demo(fpath))
             high += rew_step
     
     max_demo_return = max([demo['return'] for demo in dems])
