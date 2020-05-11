@@ -314,7 +314,7 @@ def parse_config():
     
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
     parser.add_argument('--log_dir', default='trex/logs', help='general logs directory')
-    parser.add_argument('--log_name', default=None, help='specific name for this run')
+    # parser.add_argument('--log_name', default=None, help='specific name for this run')
 
     parser.add_argument('--log_to_file', action='store_true', help='print to a specific log file instead of console')
 
