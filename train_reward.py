@@ -132,8 +132,9 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
 
 # actual reward learning network
 class RewardNet(nn.Module):
-    def __init__(self):
+    def __init__(self, output_abs=False):
         super().__init__()
+        self.output_abs = output_abs
 
         self.model = nn.Sequential(
             nn.Conv2d(3, 16, 7, stride=3),
@@ -153,7 +154,10 @@ class RewardNet(nn.Module):
     def predict_returns(self, traj):
         '''calculate cumulative return of trajectory'''
         x = traj.permute(0,3,1,2) #get into NCHW format
-        r = torch.abs(self.model(x))
+        if self.output_abs:
+            r = torch.abs(self.model(x))
+        else:
+            r = x
         all_reward = torch.sum(r)
         all_reward_abs = torch.sum(torch.abs(r))
         return all_reward, all_reward_abs
@@ -163,7 +167,10 @@ class RewardNet(nn.Module):
         with torch.no_grad():
             x = torch.tensor(batch_obs, dtype=torch.float32).permute(0,3,1,2).to(device) #get into NCHW format
             #compute forward pass of reward network (we parallelize across frames so batch size is length of partial trajectory)
-            r = torch.abs(self.model(x))
+            if self.output_abs:
+                r = torch.abs(self.model(x))
+            else:
+                r = x
             return r.cpu().numpy().flatten()
 
     def forward(self, traj_i, traj_j):
@@ -177,7 +184,7 @@ class RewardNet(nn.Module):
 class RewardTrainer:
     def __init__(self, args, device):
         self.device = device
-        self.net = RewardNet().to(device)
+        self.net = RewardNet(output_abs=args.output_abs).to(device)
         self.best_model = copy.deepcopy(self.net.state_dict())
         self.args = args
 
@@ -311,6 +318,8 @@ def parse_config():
     parser.add_argument('--epoch_size', default = 2000, type=int, help ='How often to measure validation accuracy')
     parser.add_argument('--max_num_epochs', type = int, default = 50, help = 'Number of epochs for reward learning')
     parser.add_argument('--patience', type = int, default = 6, help = 'early stopping patience')
+
+    parser.add_argument('--output_abs', action='store_true', help='absolute value the output of reward model')
     
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
     parser.add_argument('--log_dir', default='trex/logs', help='general logs directory')
@@ -474,7 +483,13 @@ def main():
 
     logging.info('Creating training data ...')
 
-    training_data= create_training_data(dems, args.num_snippets, args.min_snippet_length, args.max_snippet_length)
+    training_data = create_training_data(
+        dems = dems,
+        num_snippets = args.num_snippets,
+        min_snippet_length = args.min_snippet_length,
+        max_snippet_length = args.max_snippet_length,
+        validation = True,
+        verbose = False)
 
     # train a reward network using the dems collected earlier and save it
     logging.info("Training reward model for %s", args.env_name)
