@@ -31,7 +31,7 @@ def add_yaml_args(args, config_file):
 # produce run id and create log directory
 def log_this(config, log_dir, log_name=None, checkpoints=True):
     run_id = str(int(time.time() * 100))[-7:]
-    print(f'Run id: {run_id} with name {log_name}')
+    print(f'Run id: {run_id} with name {log_name}', flush=True)
 
     if log_name is None or len(log_name) == 0:
         log_name = run_id
@@ -44,12 +44,12 @@ def log_this(config, log_dir, log_name=None, checkpoints=True):
 
     log_path = os.path.join(run_dir, f'{run_id}.log')
 
-    print(f'Logging to {run_dir}')
+    print(f'Logging to {run_dir}', flush=True)
     # might want to send stdout here later too
     path_config = os.path.join(run_dir, f'config_{run_id}.json')
     with open(path_config, 'w', encoding='utf-8') as f:
         json.dump(vars(config), f, indent=4)
-        print(f'Config file saved to: {path_config}')
+        print(f'Config file saved to: {path_config}', flush=True)
 
     # major TODO to change this to be more widely usable and not specific to applications
     if checkpoints:

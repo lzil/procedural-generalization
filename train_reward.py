@@ -368,7 +368,6 @@ def store_model(state_dict_path, max_return, max_length, accs, args):
 def get_demo(file_name):
     #searches for the demo with the given name in all subfolders,
     #then loads it and returns 
-    print(file_name)
     path = glob.glob('./**/'+file_name, recursive=True)[0]
     demo = pickle.load(open(path, 'rb'))
 
@@ -380,26 +379,25 @@ def main():
     args = parse_config()
 
     # do seed creation before log creation
+    print('Setting up logging and seed creation', flush=True)
     if args.seed:
         seed = args.seed 
     else:
         seed = random.randint(1e6,1e7-1)
         args.seed = seed
     rm_id = '_'.join([str(seed)[:3], str(seed)[3:]])
-    logging.info(f'reward model id: {rm_id}')
 
     log_path, checkpoint_dir, run_id = log_this(args, args.log_dir, 'rm-' + rm_id)
     args.run_id = run_id
     args.checkpoint_dir = checkpoint_dir
 
-    args.debug_csv = os.path.join(args.log_dir, run_id, 'debug_rm_info.csv')
+    args.debug_csv = os.path.join(args.log_dir, 'rm-' + rm_id, f'debug_rm_{run_id}.csv')
     args.log_path = log_path
     logging.basicConfig(format='%(message)s', filename=log_path, level=logging.DEBUG)
-    # logging.addHandler(logging.StreamHandler())
     console = logging.StreamHandler()
     console.setLevel(logging.DEBUG)
-    logging.getLogger('').addHandler(console)
 
+    logging.info(f'reward model id: {rm_id}')
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic=True
@@ -409,6 +407,7 @@ def main():
     
     
     # here is where the T-REX procedure begins
+    print('Filtering demos', flush=True)
 
     constraints = {
         'env_name': args.env_name,
@@ -464,9 +463,11 @@ def main():
                 chosen_seed = np.random.choice(new_seeds, 1).item()
                 for folder in args.demo_folder:
                     fpath = os.path.join(folder, chosen_seed + '.demo')
+                    print(fpath)
                     if os.path.isfile(fpath):
                         seeds.append(chosen_seed)
                         dems.append(get_demo(fpath))
+                        break
             high += rew_step
     
     max_demo_return = max([demo['return'] for demo in dems])
