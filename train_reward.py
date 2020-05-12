@@ -220,10 +220,7 @@ class RewardTrainer:
 
                     outputs = outputs.unsqueeze(0)
 
-                    # TODO: consider l2 regularization?
-                    #included with the optimizer weight_decay value
-                    #https://pytorch.org/docs/stable/_modules/torch/optim/adam.html#Adam 
-
+                    # L1 regularization on the output
                     l1_reg = abs_rewards * self.args.lam_l1
                     
                     loss = loss_criterion(outputs, label) + l1_reg
@@ -307,7 +304,6 @@ def parse_config():
     parser.add_argument('--sequential', type = int, default = 0, 
         help = '0 means not sequential, any other number creates sequential env with start_level = args.sequential')
 
-
     parser.add_argument('--num_dems',type=int, default = 12 , help = 'Number off demonstrations to train on')
     parser.add_argument('--max_return',type=float , default = 1.0, 
                         help = 'Maximum return of the provided demonstrations as a fraction of max available return')
@@ -319,6 +315,9 @@ def parse_config():
     parser.add_argument('--max_num_epochs', type = int, default = 50, help = 'Number of epochs for reward learning')
     parser.add_argument('--patience', type = int, default = 6, help = 'early stopping patience')
 
+    parser.add_argument('--lr', type=float, default=5e-5, help='reward model learning rate')
+    parser.add_argument('--lam_l1', type=float, default=0, help='l1 penalization of abs value of output')
+    parser.add_argument('--weight_decay', type=float, default=0, help='weight decay of updates')
     parser.add_argument('--output_abs', action='store_true', help='absolute value the output of reward model')
     
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
@@ -337,10 +336,7 @@ def parse_config():
 
     args.lr = 0.00005
     args.weight_decay = 0.0
-    args.lam_l1=0
     
-    args.stochastic = True
-
     if args.config is not None:
         args = add_yaml_args(args, args.config)
 
