@@ -233,8 +233,8 @@ class RewardTrainer:
                     item_loss = loss.item()
                     epoch_loss += item_loss
                 
-                train_acc = self.calc_accuracy(np.random.choice(train_set, size=100, replace=False))
-                val_acc = self.calc_accuracy(np.random.choice(val_set, size=100, replace=False)) #keep validation set to 1000
+                train_acc = self.calc_accuracy(train_set[np.random.choice(len(train_set), size=100, replace=False)])
+                val_acc = self.calc_accuracy(val_set[np.random.choice(len(val_set), size=100, replace=False)]) #keep validation set to 1000
                 test_acc = self.calc_accuracy(test_set)
                 pearson, spearman = get_corr_with_ground(test_dems, self.net)
                 writer.writerow([epoch*self.args.epoch_size, train_acc, val_acc, test_acc, pearson, spearman])
