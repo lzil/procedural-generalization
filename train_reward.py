@@ -189,15 +189,12 @@ class RewardTrainer:
         self.args = args
 
     # Train the network
-    def learn_reward(self, training_data, test_dems, test_set):
+    def learn_reward(self, train_set, val_set, test_set, test_dems):
         loss_criterion = nn.CrossEntropyLoss()
         optimizer = optim.Adam(self.net.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
         
-        training_set, validation_set = training_data
-
         max_val_acc = 0 
         eps_no_max = 0
-
 
         with open (self.args.debug_csv, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
@@ -205,39 +202,47 @@ class RewardTrainer:
 
             for epoch in range(self.args.max_num_epochs):
                 epoch_loss = 0
-                np.random.shuffle(training_set)
-                #each epoch consists of 5000 updates - NOT passing through whole test set.
-                for i, ([traj_i, traj_j], label) in enumerate(training_set[:self.args.epoch_size]):
+                rewards = []
+                avg_rewards = []
+                np.random.shuffle(train_set)
+                #each epoch consists of some updates - NOT passing through whole test set.
+                for i, ([traj_i, traj_j], label) in enumerate(train_set[:self.args.epoch_size]):
 
-                    traj_i = torch.from_numpy(traj_i).float().to(self.device)
-                    traj_j = torch.from_numpy(traj_j).float().to(self.device)
-                    label = torch.from_numpy(label).to(self.device)
+                    ti = torch.from_numpy(traj_i).float().to(self.device)
+                    tj = torch.from_numpy(traj_j).float().to(self.device)
+                    lb = torch.from_numpy(label).to(self.device)
 
                     optimizer.zero_grad()
 
                     #forward + backward + optimize
-                    outputs, abs_rewards = self.net.forward(traj_i, traj_j)
+                    outputs, abs_rewards = self.net.forward(ti, tj)
+
+                    rewards.append(outputs[0].item())
+                    rewards.append(outputs[1].item())
+                    avg_rewards.append(abs_rewards.item())
 
                     outputs = outputs.unsqueeze(0)
 
                     # L1 regularization on the output
                     l1_reg = abs_rewards * self.args.lam_l1
                     
-                    loss = loss_criterion(outputs, label) + l1_reg
+                    loss = loss_criterion(outputs, lb) + l1_reg
                     loss.backward()
                     optimizer.step()
 
                     item_loss = loss.item()
                     epoch_loss += item_loss
                 
-                train_acc = self.calc_accuracy(training_set[:1000])
-                val_acc = self.calc_accuracy(validation_set[:1000]) #keep validation set under 1000 samples
+                train_acc = self.calc_accuracy(np.random.choice(train_set, size=100, replace=False))
+                val_acc = self.calc_accuracy(np.random.choice(val_set, size=100, replace=False)) #keep validation set to 1000
                 test_acc = self.calc_accuracy(test_set)
                 pearson, spearman = get_corr_with_ground(test_dems, self.net)
                 writer.writerow([epoch*self.args.epoch_size, train_acc, val_acc, test_acc, pearson, spearman])
 
+                avg_reward = np.mean(np.array(rewards))
+                avg_abs_reward = np.mean(np.array(abs_rewards))
 
-                logging.info(f"n_samples: {epoch*self.args.epoch_size:6g} | loss: {epoch_loss:5.2f} | abs_rewards: {abs_rewards.item():5.2f} | pc: {pearson:5.2f} | sc: {spearman:5.2f}")
+                logging.info(f"n_samples: {epoch*self.args.epoch_size:6g} | loss: {epoch_loss:5.2f} | rewards: {avg_reward.item():5.2f}/{avg_abs_reward.item():.2f} | pc: {pearson:5.2f} | sc: {spearman:5.2f}")
                 logging.info(f'   | train_acc: {train_acc:6.4f} | val_acc: {val_acc:6.4f} | test_acc : {test_acc:6.4f}')
                 if val_acc > max_val_acc:
                     self.save_model()
@@ -263,30 +268,28 @@ class RewardTrainer:
         self.best_model = copy.deepcopy(self.net.state_dict())
 
     # calculate and return accuracy on entire training set
-    def calc_accuracy(self, training_data):
-
-        loss_criterion = nn.CrossEntropyLoss()
+    def calc_accuracy(self, data):
         num_correct = 0.
         with torch.no_grad():
-            for [traj_i, traj_j], label in training_data:
-                traj_i = torch.from_numpy(traj_i).float().to(self.device)
-                traj_j = torch.from_numpy(traj_j).float().to(self.device)
+            for [traj_i, traj_j], label in data:
+                ti = torch.from_numpy(traj_i).float().to(self.device)
+                tj = torch.from_numpy(traj_j).float().to(self.device)
+                lb = torch.from_numpy(label).to(self.device)
 
                 #forward to get logits
-                outputs, abs_return = self.net.forward(traj_i, traj_j)
+                outputs, abs_return = self.net.forward(ti, tj)
                 _, pred_label = torch.max(outputs,0)
-                if pred_label.item() == label:
+                if pred_label.item() == lb:
                     num_correct += 1.
-        return num_correct / len(training_data)
+        return num_correct / len(data)
 
 
     # purpose of these two functions is to get predicted return (via reward net) from the trajectory given as input
     def predict_reward_sequence(self, traj):
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         rewards_from_obs = []
         with torch.no_grad():
             for s in traj:
-                r = self.net.predict_returns(torch.from_numpy(np.array([s])).float().to(device))[0].item()
+                r = self.net.predict_returns(torch.from_numpy(np.array([s])).float().to(self.device))[0].item()
                 rewards_from_obs.append(r)
         return rewards_from_obs
 
@@ -486,14 +489,16 @@ def main():
         min_snippet_length = args.min_snippet_length,
         max_snippet_length = args.max_snippet_length,
         validation = True,
-        verbose = False)
+        verbose = False
+    )
 
     # train a reward network using the dems collected earlier and save it
     logging.info("Training reward model for %s ...", args.env_name)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     trainer = RewardTrainer(args, device)
 
-    state_dict_path, accs = trainer.learn_reward(training_data, test_dems, test_set)
+    train_set, val_set = training_data
+    state_dict_path, accs = trainer.learn_reward(train_set, val_set, test_set, test_dems)
 
     # print out predicted cumulative returns and actual returns
 
@@ -502,7 +507,7 @@ def main():
         for demo in sorted(dems[:20], key = lambda x: x['return']):
             logging.info(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}")
 
-    logging.info(f"Final train set accuracy {trainer.calc_accuracy(training_data[0][:5000])}")
+    logging.info(f"Final train set accuracy {trainer.calc_accuracy(train_set[:5000])}")
 
     store_model(state_dict_path, max_demo_return, max_demo_length, accs, args)
 
