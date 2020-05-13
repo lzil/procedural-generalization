@@ -202,8 +202,8 @@ class RewardTrainer:
 
             for epoch in range(self.args.max_num_epochs):
                 epoch_loss = 0
-                rewards = []
-                avg_rewards = []
+                reward_list = []
+                abs_reward_list = []
                 np.random.shuffle(train_set)
                 #each epoch consists of some updates - NOT passing through whole test set.
                 for i, ([traj_i, traj_j], label) in enumerate(train_set[:self.args.epoch_size]):
@@ -217,9 +217,9 @@ class RewardTrainer:
                     #forward + backward + optimize
                     outputs, abs_rewards = self.net.forward(ti, tj)
 
-                    rewards.append(outputs[0].item())
-                    rewards.append(outputs[1].item())
-                    avg_rewards.append(abs_rewards.item())
+                    reward_list.append(outputs[0].cpu().item())
+                    reward_list.append(outputs[1].cpu().item())
+                    abs_reward_list.append(abs_rewards.cpu().item())
 
                     outputs = outputs.unsqueeze(0)
 
@@ -239,8 +239,8 @@ class RewardTrainer:
                 pearson, spearman = get_corr_with_ground(test_dems, self.net)
                 writer.writerow([epoch*self.args.epoch_size, train_acc, val_acc, test_acc, pearson, spearman])
 
-                avg_reward = np.mean(np.array(rewards))
-                avg_abs_reward = np.mean(np.array(abs_rewards))
+                avg_reward = np.mean(np.array(reward_list))
+                avg_abs_reward = np.mean(np.array(abs_reward_list))
 
                 logging.info(f"n_samples: {epoch*self.args.epoch_size:6g} | loss: {epoch_loss:5.2f} | rewards: {avg_reward.item():5.2f}/{avg_abs_reward.item():.2f} | pc: {pearson:5.2f} | sc: {spearman:5.2f}")
                 logging.info(f'   | train_acc: {train_acc:6.4f} | val_acc: {val_acc:6.4f} | test_acc : {test_acc:6.4f}')
