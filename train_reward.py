@@ -466,7 +466,7 @@ def main():
         while (high <= max_return) and (len(dems) < args.num_dems):
             #crerate boundaries to pick the demos from, and filter demos accordingly
             low = high - rew_step
-            filtered_dems = train_rows[(train_rows['return'] > low) & (train_rows['return']< high)]
+            filtered_dems = train_rows[(train_rows['return'] >= low) & (train_rows['return']<= high)]
             #make sure we have only unique demos
             new_seeds = filtered_dems[~filtered_dems['demo_id'].isin(seeds)]['demo_id']
             #choose random demo and append
