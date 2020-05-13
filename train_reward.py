@@ -198,7 +198,7 @@ class RewardTrainer:
 
         with open (self.args.debug_csv, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-            writer.writerow(['n_train_samples','train_acc', 'val_acc','test_acc', 'pearson', 'spearman'])
+            writer.writerow(['n_train_samples','train_acc', 'train_loss', 'val_acc', 'val_loss', 'test_acc', 'test_loss', 'pearson', 'spearman'])
 
             for epoch in range(self.args.max_num_epochs):
                 epoch_loss = 0
@@ -233,17 +233,20 @@ class RewardTrainer:
                     item_loss = loss.item()
                     epoch_loss += item_loss
                 
-                train_acc = self.calc_accuracy(train_set[np.random.choice(len(train_set), size=100, replace=False)])
-                val_acc = self.calc_accuracy(val_set[np.random.choice(len(val_set), size=100, replace=False)]) #keep validation set to 1000
-                test_acc = self.calc_accuracy(test_set)
+                train_acc, train_loss = self.calc_accuracy(train_set[np.random.choice(len(train_set), size=1000, replace=False)])
+                val_acc, val_loss = self.calc_accuracy(val_set[np.random.choice(len(val_set), size=1000, replace=False)]) #keep validation set to 1000
+                test_acc, test_loss = self.calc_accuracy(test_set)
                 pearson, spearman = get_corr_with_ground(test_dems, self.net)
-                writer.writerow([epoch*self.args.epoch_size, train_acc, val_acc, test_acc, pearson, spearman])
+
+                writer.writerow([epoch*self.args.epoch_size, train_acc, train_loss, val_acc, val_loss, test_acc, test_loss, pearson, spearman])
 
                 avg_reward = np.mean(np.array(reward_list))
                 avg_abs_reward = np.mean(np.array(abs_reward_list))
 
                 logging.info(f"n_samples: {epoch*self.args.epoch_size:6g} | loss: {epoch_loss:5.2f} | rewards: {avg_reward.item():5.2f}/{avg_abs_reward.item():.2f} | pc: {pearson:5.2f} | sc: {spearman:5.2f}")
-                logging.info(f'   | train_acc: {train_acc:6.4f} | val_acc: {val_acc:6.4f} | test_acc : {test_acc:6.4f}')
+                logging.info(f'   | train_acc : {train_acc:6.4f} | val_acc : {val_acc:6.4f} | test_acc : {test_acc:6.4f}')
+                logging.info(f'   | train_loss: {train_loss:6.4f} | val_loss: {val_loss:6.4f} | test_loss: {test_los:6.4f}')
+
                 if val_acc > max_val_acc:
                     self.save_model()
                     max_val_acc = val_acc
@@ -270,6 +273,8 @@ class RewardTrainer:
     # calculate and return accuracy on entire training set
     def calc_accuracy(self, data):
         num_correct = 0.
+        total_loss = 0.
+        
         with torch.no_grad():
             for [traj_i, traj_j], label in data:
                 ti = torch.from_numpy(traj_i).float().to(self.device)
@@ -277,12 +282,15 @@ class RewardTrainer:
                 lb = torch.from_numpy(label).to(self.device)
 
                 #forward to get logits
-                outputs, abs_return = self.net.forward(ti, tj)
+                rewards, abs_rewards = self.net(ti, tj)
                 _, pred_label = torch.max(outputs,0)
                 if pred_label.item() == lb:
                     num_correct += 1.
-        return num_correct / len(data)
 
+                loss = criterion(rewards, lb) + abs_rewards * self.args.lam_l1
+                total_loss += loss
+
+        return num_correct / len(data), total_loss
 
     # purpose of these two functions is to get predicted return (via reward net) from the trajectory given as input
     def predict_reward_sequence(self, traj):
@@ -406,6 +414,7 @@ def main():
     console.setLevel(logging.DEBUG)
     logging.getLogger('').addHandler(console)
 
+    logging.info(f'Save name: {args.save_name}')
     logging.info(f'Reward model id: {rm_id}')
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
