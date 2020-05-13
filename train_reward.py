@@ -233,6 +233,7 @@ class RewardTrainer:
                     item_loss = loss.item()
                     epoch_loss += item_loss
                 
+                epoch_loss /= self.args.epoch_size
                 train_acc, train_loss = self.calc_accuracy(train_set[np.random.choice(len(train_set), size=1000, replace=False)])
                 val_acc, val_loss = self.calc_accuracy(val_set[np.random.choice(len(val_set), size=1000, replace=False)]) #keep validation set to 1000
                 test_acc, test_loss = self.calc_accuracy(test_set)
@@ -245,7 +246,7 @@ class RewardTrainer:
 
                 logging.info(f"n_samples: {epoch*self.args.epoch_size:6g} | loss: {epoch_loss:5.2f} | rewards: {avg_reward.item():5.2f}/{avg_abs_reward.item():.2f} | pc: {pearson:5.2f} | sc: {spearman:5.2f}")
                 logging.info(f'   | train_acc : {train_acc:6.4f} | val_acc : {val_acc:6.4f} | test_acc : {test_acc:6.4f}')
-                logging.info(f'   | train_loss: {train_loss:6.4f} | val_loss: {val_loss:6.4f} | test_loss: {test_los:6.4f}')
+                logging.info(f'   | train_loss: {train_loss:6.4f} | val_loss: {val_loss:6.4f} | test_loss: {test_loss:6.4f}')
 
                 if val_acc > max_val_acc:
                     self.save_model()
@@ -272,6 +273,7 @@ class RewardTrainer:
 
     # calculate and return accuracy on entire training set
     def calc_accuracy(self, data):
+        criterion = nn.CrossEntropyLoss()
         num_correct = 0.
         total_loss = 0.
         
@@ -283,14 +285,14 @@ class RewardTrainer:
 
                 #forward to get logits
                 rewards, abs_rewards = self.net(ti, tj)
-                _, pred_label = torch.max(outputs,0)
+                _, pred_label = torch.max(rewards, 0)
                 if pred_label.item() == lb:
                     num_correct += 1.
 
-                loss = criterion(rewards, lb) + abs_rewards * self.args.lam_l1
+                loss = criterion(rewards.unsqueeze(0), lb).cpu().item() + abs_rewards * self.args.lam_l1
                 total_loss += loss
 
-        return num_correct / len(data), total_loss
+        return num_correct / len(data), total_loss / len(data)
 
     # purpose of these two functions is to get predicted return (via reward net) from the trajectory given as input
     def predict_reward_sequence(self, traj):
@@ -345,7 +347,6 @@ def parse_config():
     
     args = parser.parse_args()
 
-    args.lr = 0.00005
     args.weight_decay = 0.0
     
     if args.config is not None:
@@ -516,7 +517,7 @@ def main():
         for demo in sorted(dems[:20], key = lambda x: x['return']):
             logging.info(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}")
 
-    logging.info(f"Final train set accuracy {trainer.calc_accuracy(train_set[:5000])}")
+    logging.info(f"Final train set accuracy {trainer.calc_accuracy(train_set[:5000])[0]}")
 
     store_model(state_dict_path, max_demo_return, max_demo_length, accs, args)
 
