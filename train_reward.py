@@ -451,8 +451,8 @@ def main():
     logging.info('Creating training data ...')
 
     #implemening uniformish distribution of demo returns
-    max_return = (train_rows.max()['return'] - train_rows.min()['return']) * args.max_return
     min_return = train_rows.min()['return']
+    max_return = (train_rows.max()['return'] - min_return) * args.max_return + min_return
 
     rew_step  = (max_return - min_return)/ 4
     dems = []
@@ -465,7 +465,7 @@ def main():
             low = high - rew_step
             filtered_dems = train_rows[(train_rows['return'] > low) & (train_rows['return']< high)]
             #make sure we have only unique demos
-            new_seeds = train_rows[~train_rows['demo_id'].isin(seeds)]['demo_id']
+            new_seeds = filtered_dems[~filtered_dems['demo_id'].isin(seeds)]['demo_id']
             #choose random demo and append
             if len(new_seeds) > 0:
                 chosen_seed = np.random.choice(new_seeds, 1).item()
