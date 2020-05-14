@@ -69,7 +69,9 @@ Afterwards, the program will attempt to plot the correlations with `plot_correla
 
 ---
 
-## recording and watching videos of saved models
+## recording and watching videos
+
+### policy
 
 Tesing a trained agent saved in `policy.parameters` can be done with e.g.:  
 `python test_policy.py --load_path policy.parameters --env_name Name`
@@ -80,4 +82,12 @@ You can also record a video of the trained agent with e.g.:
 Additional argumets are available
 
 
+### demonstration
 
+Produce a demonstration file with
+`python visualize_demo <demo_path>`
+and it will appear in `videos/demo_<demo_id>.mp4`.
+
+Slight problem: when you run it, it prints a lot of stuff.
+I haven't been able to figure out how to get rid of it - it may be a Mac thing.
+But the produced video is unaffected.

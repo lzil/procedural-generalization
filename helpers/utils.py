@@ -6,6 +6,8 @@ import yaml
 import logging
 import time
 import json
+import csv
+import pandas as pd
 
 
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
@@ -25,10 +27,12 @@ def add_yaml_args(args, config_file):
             #     logging.warning(f'{c} is not set to begin with: {v}')
     return args
 
+
 # produce run id and create log directory
 def log_this(config, log_dir, log_name=None, checkpoints=True):
-    run_id = str(int(time.time()))[4:]
-    print(f'Run id: {run_id}')
+    run_id = str(int(time.time() * 100))[-7:]
+    print('\n=== Logging ===', flush=True)
+    print(f'Run id: {run_id} with name {log_name}', flush=True)
 
     if log_name is None or len(log_name) == 0:
         log_name = run_id
@@ -41,13 +45,14 @@ def log_this(config, log_dir, log_name=None, checkpoints=True):
 
     log_path = os.path.join(run_dir, f'{run_id}.log')
 
-    print(f'Logging to {run_dir}')
+    print(f'Logging to {run_dir}', flush=True)
     # might want to send stdout here later too
     path_config = os.path.join(run_dir, f'config_{run_id}.json')
     with open(path_config, 'w', encoding='utf-8') as f:
         json.dump(vars(config), f, indent=4)
-        print(f'Config file saved to: {path_config}')
-
+        print(f'Config file saved to: {path_config}', flush=True)
+    
+    print('===============\n', flush=True)
     # major TODO to change this to be more widely usable and not specific to applications
     if checkpoints:
         # used for reward model training
@@ -56,52 +61,72 @@ def log_this(config, log_dir, log_name=None, checkpoints=True):
         # used for correlations
         return run_dir, run_id
 
-import scipy
-import numpy as np
 
-def least_l2_affine(
-    source: np.ndarray, target: np.ndarray, shift: bool = True, scale: bool = True
-):
-    """Finds the squared-error minimizing affine transform.
+# extract id from the path. a bit hacky but should get the job done
+def get_id(path):
+    rm_id = '.'.join(os.path.basename(path).split('.')[:-1])
+    return rm_id
 
-    Args:
-        source: a 1D array consisting of the reward to transform.
-        target: a 1D array consisting of the target to match.
-        shift: affine includes constant shift.
-        scale: affine includes rescale.
 
-    Returns:
-        (shift, scale) such that (scale * reward + shift) has minimal squared-error from target.
+# helper function for filtering rows in a csv
+def retain_row(row, constraints):
+    for k,v in constraints.items():
+        # respect maximum return constraints
+        if 'demo_max_return' in constraints:
+            if float(row['return']) > float(constraints['demo_max_return']):
+                return False
+        if 'demo_max_len' in constraints:
+            if float(row['length']) > float(constraints['demo_max_len']):
+                return False
+        if 'demo_min_len' in constraints:
+            if float(row['length']) < float(constraints['demo_max_len']):
+                return False
+        if 'rm_max_return' in constraints:
+            if float(row['max_return']) > float(constraints['rm_max_return']):
+                return False
 
-    Raises:
-        ValueError if source or target are not 1D arrays, or if neither shift or scale are True.
-    """
-    if source.ndim != 1:
-        raise ValueError("source must be vector.")
-    if target.ndim != 1:
-        raise ValueError("target must be vector.")
-    if not (shift or scale):
-        raise ValueError("At least one of shift and scale must be True.")
+        # all other constraints
+        if row[k] != v:
+            return False
+    return True
 
-    a_vals = []
-    if shift:
-        # Positive and negative constant.
-        # The shift will be the sum of the coefficients of these terms.
-        a_vals += [np.ones_like(source), -np.ones_like(source)]
-    if scale:
-        a_vals += [source]
-    a_vals = np.stack(a_vals, axis=1)
-    # Find x such that a_vals.dot(x) has least-squared error from target, where x >= 0.
-    coefs, _ = scipy.optimize.nnls(a_vals, target)
+# helper function to get the rows in a csv that matter
+def filter_csv(path, constraints, max_rows=1000000):
+    with open(path) as master:
+        reader = csv.DictReader(master, delimiter=',')
+        rows = []
+        for row in reader:
+            if not retain_row(row, constraints):
+                continue
+            rows.append(row)
+            if len(rows) > max_rows:
+                break
 
-    shift_param = 0.0
-    scale_idx = 0
-    if shift:
-        shift_param = coefs[0] - coefs[1]
-        scale_idx = 2
+    return rows
 
-    scale_param = 1.0
-    if scale:
-        scale_param = coefs[scale_idx]
+# helper function using pandas
+def filter_csv_pandas(path, constraints):
+    infos = pd.read_csv(path)
+    if 'env_name' in constraints:
+        infos = infos[infos['env_name'] == constraints['env_name']]
+    if 'mode' in constraints:
+        infos = infos[infos['mode'] == constraints['mode']]
+    if 'sequential' in constraints:
+        infos = infos[infos['sequential'] == constraints['sequential']]
+    if 'set_name' in constraints:
+        infos = infos[infos['set_name'] == constraints['set_name']]
+    if 'demo_min_len' in constraints:
+        # using > here instead of >=
+        infos = infos[infos['length'] > constraints['demo_min_len']]
+    return infos
 
-    return shift_param, scale_param
+
+
+# https://stackoverflow.com/questions/19932130/iterate-through-folders-then-subfolders-and-print-filenames-with-path-to-text-f
+def list_files(dir):
+    r = []
+    for root, dirs, files in os.walk(dir):
+        for name in files:
+            r.append(os.path.join(root, name))
+    return r
+

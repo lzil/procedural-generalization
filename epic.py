@@ -8,7 +8,7 @@ import scipy
 import numpy as np
 import pandas as pd
 
-from helpers.utils import least_l2_affine
+from helpers.affine import least_l2_affine
 
 
 from train_reward import RewardNet, get_demo
