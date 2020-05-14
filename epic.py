@@ -86,7 +86,7 @@ def approximate_EPIC(reward_function, D):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     dataset = EpicDataset(D, reward_function)
-    dataloader = DataLoader(dataset, batch_size = 128, shuffle=True, collate_fn = default_collate)
+    dataloader = DataLoader(dataset, batch_size = 1024, shuffle=True, collate_fn = default_collate, pin_memory = True, drop_last = True)
     gamma = torch.tensor(0.99, dtype=torch.float32, device='cuda:0') 
     #initialize potential shaping funtion
     SH = PotentialNet().to(device)
@@ -95,14 +95,13 @@ def approximate_EPIC(reward_function, D):
     v = torch.tensor(v, dtype=torch.float32, device=device, requires_grad=True) 
     c = torch.tensor(c, dtype=torch.float32, device=device, requires_grad=True) 
     
-    l = nn.MSELoss(reduction = 'sum')
-    optimizer = optim.Adam(list(SH.parameters())+[v, c], lr=0.003, weight_decay=0.001)
+    l = nn.MSELoss(reduction = 'mean')
+    optimizer = optim.Adam(list(SH.parameters())+[v, c], lr=0.002)
     print(f'total transitions = {len(dataset)}')
 
     print('Starting training')
-    for epoch in range(100):
-        epoch_loss = 0
-        # np.random.shuffle(D)
+    for epoch in range(200):
+        epoch_losses = []
         for i, sampe_batch in enumerate(dataloader):
             optimizer.zero_grad()
 
@@ -114,9 +113,9 @@ def approximate_EPIC(reward_function, D):
             optimizer.step()
 
             item_loss = EPIC_loss.item()
-            epoch_loss += item_loss
+            epoch_losses.append(item_loss)
 
-        print(f"epoch : {epoch}, EPIC distance : {epoch_loss/len(dataset)}" )
+        print(f"epoch : {epoch}, EPIC distance : {np.mean(epoch_losses)}" )
 
 
 
