@@ -189,8 +189,8 @@ class RewardTrainer:
                     epoch_loss += item_loss
                 
                 epoch_loss /= self.args.epoch_size
-                train_acc, train_loss = self.calc_accuracy(train_set[np.random.choice(len(train_set), size=1000, replace=False)])
-                val_acc, val_loss = self.calc_accuracy(val_set[np.random.choice(len(val_set), size=1000, replace=False)]) #keep validation set to 1000
+                train_acc, train_loss = self.calc_accuracy(train_set[:1000])
+                val_acc, val_loss = self.calc_accuracy(val_set[:1000]) #keep validation set to 1000
                 test_acc, test_loss = self.calc_accuracy(test_set)
                 pearson, spearman = get_corr_with_ground(test_dems, self.net)
 
@@ -472,9 +472,16 @@ def main():
     # print out predicted cumulative returns and actual returns
     # merge this successfully with anton's branch to print test return examples
     with torch.no_grad():
+        logging.info('_____TRAIN set_____')
         logging.info('true     |predicted')
-        for demo in sorted(train_dems[:20], key = lambda x: x['return']):
+        for demo in sorted(dems[:20], key = lambda x: x['return']):
             logging.info(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}")
+
+    with torch.no_grad():
+        logging.info('______TEST set_____')
+        logging.info('true     |predicted')
+        for demo in sorted(test_dems[:20], key = lambda x: x['return']):
+            logging.info(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}") 
 
     logging.info(f"Final train set accuracy {trainer.calc_accuracy(train_set[:5000])[0]}")
 
