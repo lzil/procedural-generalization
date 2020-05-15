@@ -67,9 +67,14 @@ def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, 
             rm_id = get_id(r_path)
             print(f'{r+1}/{len(rows)}: {rm_id}, {r_path}')
 
+            device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+            # load learned reward model
+            net = RewardNet().to(device)
+            torch.load(reward_path, map_location=torch.device(device))
+
             pearson_r, spearman_r = get_corr_with_ground(
                 demos=demos,
-                reward_path=r_path,
+                net=net,
                 verbose=verbose,
                 baseline_reward=baseline_reward
             )

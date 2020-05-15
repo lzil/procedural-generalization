@@ -1,7 +1,6 @@
 # adapted heavily from https://github.com/hiwonjoon/ICML2019-TREX/blob/master/atari/LearnAtariReward.py
 
 import numpy as np
-import pandas as pd
 import csv
 import copy
 import pickle
@@ -9,59 +8,25 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-import time
-import copy
 import os, glob
 import random
 import sys
 from shutil import copy2
+import argparse
 
 import logging
 
 import tensorflow as tf
 
-# from baselines.ppo2 import ppo2
-import helpers.baselines_ppo2 as ppo2 # use this for adjusted logging ability
-from procgen import ProcgenEnv
-from baselines.common.vec_env import VecExtractDictObs
-from baselines.common.models import build_impala_cnn
-
-from helpers.trajectory_collection import ProcgenRunner, generate_procgen_dems
 from helpers.utils import *
-
-import argparse
-
-
-log = None
 
 from scipy.stats import pearsonr
 from scipy.stats import spearmanr
 
-def get_corr_with_ground(demos, net, verbose=False, baseline_reward=False):
-
-    rs = []
-    for dem in demos:
-        if baseline_reward:
-            r_prediction = len(dem['observations'])
-        else:
-            r_prediction = np.sum(net.predict_batch_rewards(dem['observations']))
-        
-        r_true = dem['return']
-
-        rs.append((r_true, r_prediction))
-
-    # calculate correlations and print them
-    rs_by_var = list(zip(*rs))
-    pearson_r, pearson_p = pearsonr(rs_by_var[0], rs_by_var[1])
-    spearman_r, spearman_p = spearmanr(rs)
-
-    if verbose:
-        print(f'(pearson_r, spearman_r): {(pearson_r, spearman_r)}')
-
-    return (pearson_r, spearman_r)
+from reward_metric import get_corr_with_ground
 
 
-def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_length, validation=True, verbose=True):
+def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, validation=True, verbose=True):
     """
     This function takes a set of demonstrations and produces 
     a training set consisting of pairs of clips with assigned preferences
@@ -111,21 +76,14 @@ def create_training_data(dems, num_snippets, min_snippet_length, max_snippet_len
         clip0  = d0['observations'][d0_start : d0_start+cur_len]
         clip1  = d1['observations'][d1_start : d1_start+cur_len]
 
-        
+        # add the baseline for the true reward here and return it
+        # function goes here
+
+        # this label shouldn't make a difference; reward model looks at individual states
         if is_validation:
             validation_data.append(([clip0, clip1], np.array([1])))
         else:
             training_data.append(([clip0, clip1], np.array([1])))
-
-
-        ### This doesn't make any difference 
-
-        # # randomize label so reward learning model won't learn heuristic
-        # label = np.random.randint(2)
-        # if label:
-        #     training_data.append(([clip0, clip1], np.array([1])))
-        # else:
-        #     training_data.append(([clip1, clip0], np.array([0])))
 
     return np.array(training_data), np.array(validation_data)
 
@@ -295,6 +253,7 @@ class RewardTrainer:
         return num_correct / len(data), total_loss / len(data)
 
     # purpose of these two functions is to get predicted return (via reward net) from the trajectory given as input
+    # possibly get rid of these two functions and merge with the prediction functions in RewardNet
     def predict_reward_sequence(self, traj):
         rewards_from_obs = []
         with torch.no_grad():
@@ -305,6 +264,7 @@ class RewardTrainer:
 
     def predict_traj_return(self, traj):
         return sum(self.predict_reward_sequence(traj))
+
 
 def parse_config():
     parser = argparse.ArgumentParser(description='Default arguments to initialize and load the model and env')
@@ -335,10 +295,8 @@ def parse_config():
     
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
     parser.add_argument('--log_dir', default='trex/logs', help='general logs directory')
-    # parser.add_argument('--log_name', default=None, help='specific name for this run')
 
-    parser.add_argument('--log_to_file', action='store_true', help='print to a specific log file instead of console')
-
+    # hopeully get rid of this
     parser.add_argument('--demo_folder', nargs='+', default=['trex/demos'], help='path to folders with demos')
     parser.add_argument('--demo_csv', nargs='+', default=['trex/demos/demo_infos.csv'], help='path to csv files with demo info')
 
@@ -346,13 +304,12 @@ def parse_config():
     parser.add_argument('--save_name', default=None, help='suffix to the name of the csv/file folder for saving')
     
     args = parser.parse_args()
-
-    args.weight_decay = 0.0
     
     if args.config is not None:
         args = add_yaml_args(args, args.config)
 
     return args
+
 
 def store_model(state_dict_path, max_return, max_length, accs, args):
 
@@ -371,8 +328,7 @@ def store_model(state_dict_path, max_return, max_length, accs, args):
     model_dir = os.path.join(args.save_dir, files_name)
     os.makedirs(model_dir, exist_ok=True)
 
-    rm_id = str(args.seed)[:3] + '_' + str(args.seed)[3:]
-    save_path = os.path.join(model_dir, str(args.seed)[:3] + '_' + str(args.seed)[3:] + '.rm')
+    save_path = os.path.join(model_dir, args.rm_id + '.rm')
     copy2(state_dict_path, save_path)
 
     train_acc, val_acc, test_acc, pearson, spearman = accs
@@ -382,7 +338,8 @@ def store_model(state_dict_path, max_return, max_length, accs, args):
                             args.num_dems, max_return, max_length, args.sequential,
                             train_acc, val_acc, test_acc, pearson, spearman])
 
-def get_demo(file_name):
+
+def get_file(file_name):
     #searches for the demo with the given name in all subfolders,
     #then loads it and returns 
     path = glob.glob('./**/'+file_name, recursive=True)[0]
@@ -405,6 +362,7 @@ def main():
     rm_id = '_'.join([str(seed)[:3], str(seed)[3:]])
 
     log_path, checkpoint_dir, run_id = log_this(args, args.log_dir, 'rm-' + rm_id)
+    args.rm_id = rm_id
     args.run_id = run_id
     args.checkpoint_dir = checkpoint_dir
 
@@ -439,20 +397,20 @@ def main():
 
     logging.info(f'Filtered demos: {len(train_rows)} training demos available, {args.num_dems} requested')
 
-    #acquiring test demos for correlations and test accuracy
-
+    # acquiring test demos for correlations and test accuracy
     logging.info('Creating testing data ...')
     n_test_demos = 100
     demo_ids_n = np.random.choice(test_rows['demo_id'], n_test_demos)
     test_dems = []
     for dem in demo_ids_n:
-        for folder in args.demo_folder:
-            fpath = os.path.join(folder, dem + '.demo')
-            if os.path.isfile(fpath):
-                test_dems.append(get_demo(fpath))
-                break
+        test_dems.append(get_file(dem + '.demo'))
+        # for folder in args.demo_folder:
+        #     fpath = os.path.join(folder, dem + '.demo')
+        #     if os.path.isfile(fpath):
+        #         test_dems.append(get_file(fpath))
+        #         break
 
-    test_set, _ = create_training_data(
+    test_set, _ = create_dataset(
         dems = test_dems,
         num_snippets = 1000,
         min_snippet_length = args.min_snippet_length,
@@ -468,33 +426,35 @@ def main():
     max_return = (train_rows.max()['return'] - min_return) * args.max_return + min_return
 
     rew_step  = (max_return - min_return)/ 4
-    dems = []
+    train_dems = []
     seeds = []
-    while len(dems) < args.num_dems:
+    while len(train_dems) < args.num_dems:
 
         high = min_return + rew_step 
-        while (high <= max_return) and (len(dems) < args.num_dems):
+        while (high <= max_return) and (len(train_dems) < args.num_dems):
             #crerate boundaries to pick the demos from, and filter demos accordingly
             low = high - rew_step
-            filtered_dems = train_rows[(train_rows['return'] >= low) & (train_rows['return']<= high)]
+            filtered_dems = train_rows[(train_rows['return'] >= low) & (train_rows['return'] <= high)]
             #make sure we have only unique demos
             new_seeds = filtered_dems[~filtered_dems['demo_id'].isin(seeds)]['demo_id']
             #choose random demo and append
             if len(new_seeds) > 0:
                 chosen_seed = np.random.choice(new_seeds, 1).item()
-                for folder in args.demo_folder:
-                    fpath = os.path.join(folder, chosen_seed + '.demo')
-                    if os.path.isfile(fpath):
-                        seeds.append(chosen_seed)
-                        dems.append(get_demo(fpath))
-                        break
+                train_dems.append(get_file(chosen_seed + '.demo'))
+                seeds.append(chosen_seed)
+                # for folder in args.demo_folder:
+                #     fpath = os.path.join(folder, chosen_seed + '.demo')
+                #     if os.path.isfile(fpath):
+                #         seeds.append(chosen_seed)
+                #         dems.append(get_file(fpath))
+                #         break
             high += rew_step
     
-    max_demo_return = max([demo['return'] for demo in dems])
-    max_demo_length = max([demo['length'] for demo in dems])
+    max_demo_return = max([demo['return'] for demo in train_dems])
+    max_demo_length = max([demo['length'] for demo in train_dems])
 
-    training_data = create_training_data(
-        dems = dems,
+    training_data = create_dataset(
+        dems = train_dems,
         num_snippets = args.num_snippets,
         min_snippet_length = args.min_snippet_length,
         max_snippet_length = args.max_snippet_length,
@@ -511,10 +471,10 @@ def main():
     state_dict_path, accs = trainer.learn_reward(train_set, val_set, test_set, test_dems)
 
     # print out predicted cumulative returns and actual returns
-
+    # merge this successfully with anton's branch to print test return examples
     with torch.no_grad():
         logging.info('true     |predicted')
-        for demo in sorted(dems[:20], key = lambda x: x['return']):
+        for demo in sorted(train_dems[:20], key = lambda x: x['return']):
             logging.info(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}")
 
     logging.info(f"Final train set accuracy {trainer.calc_accuracy(train_set[:5000])[0]}")

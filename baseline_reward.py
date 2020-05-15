@@ -34,7 +34,7 @@ def main():
                 test_dems.append(get_demo(fpath))
                 break
 
-    test_set, _ = create_training_data(
+    test_set, _ = create_dataset(
         dems = test_dems,
         num_snippets = 1000,
         min_snippet_length = args.min_snippet_length,

@@ -14,22 +14,17 @@ from baselines.common.models import build_impala_cnn
 import pdb
 import argparse
 
-from train_reward import RewardNet, generate_procgen_dems
 from helpers.utils import add_yaml_args
-from helpers.ProxyRewardWrapper import ProxyRewardWrapper
-import helpers.baselines_ppo2 as ppo2
 
 # function should be used more generally
-
-def get_corr_with_ground(demos, reward_path, verbose=True, baseline_reward=False):
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    # load learned reward model
-    net = RewardNet().to(device)
-    torch.load(reward_path, map_location=torch.device(device))
-    net.load_state_dict(torch.load(reward_path, map_location=torch.device(device)))
+def get_corr_with_ground(demos, net, verbose=False, baseline_reward=False):
     rs = []
     for dem in demos:
-        r_prediction = np.sum(net.predict_batch_rewards(dem['observations']))
+        if baseline_reward:
+            r_prediction = len(dem['observations'])
+        else:
+            r_prediction = np.sum(net.predict_batch_rewards(dem['observations']))
+        
         r_true = dem['return']
 
         rs.append((r_true, r_prediction))
@@ -43,7 +38,6 @@ def get_corr_with_ground(demos, reward_path, verbose=True, baseline_reward=False
         print(f'(pearson_r, spearman_r): {(pearson_r, spearman_r)}')
 
     return (pearson_r, spearman_r)
-
 
 # DEPRECATED: everything below here is probably broken right now
 
