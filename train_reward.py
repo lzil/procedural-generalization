@@ -7,6 +7,7 @@ import pickle
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import tensorflow as tf
 
 import os, glob
 import random
@@ -16,13 +17,7 @@ import argparse
 
 import logging
 
-import tensorflow as tf
-
 from helpers.utils import *
-
-from scipy.stats import pearsonr
-from scipy.stats import spearmanr
-
 from reward_metric import get_corr_with_ground
 
 
@@ -32,7 +27,6 @@ def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, v
     a training set consisting of pairs of clips with assigned preferences
     """
 
-    #Print out some info
     if verbose:
         logging.info( f' {len(dems)} demonstrations provided')
         logging.info(f"demo lengths : {[d['length'] for d in dems]}")
@@ -53,7 +47,7 @@ def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, v
         i1, i2 = np.random.choice(len(dems) ,2,  replace = False)
 
         if validation:
-            is_validation = (i1 in val_idx) or (i2 in val_idx)
+            is_validation = (i1 in val_idx) and (i2 in val_idx)
         else:
             is_validation = False
         # make d0['return'] <= d1['return']
@@ -84,6 +78,9 @@ def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, v
             validation_data.append(([clip0, clip1], np.array([1])))
         else:
             training_data.append(([clip0, clip1], np.array([1])))
+
+    logging.info(f'set length: {len(training_data)}')
+    logging.info(f'val set length: {len(validation_data)}')
 
     return np.array(training_data), np.array(validation_data)
 
@@ -453,6 +450,8 @@ def main():
     max_demo_return = max([demo['return'] for demo in train_dems])
     max_demo_length = max([demo['length'] for demo in train_dems])
 
+    # make training and validation datasets separate
+    # so there are two different calls to create the two datasets
     training_data = create_dataset(
         dems = train_dems,
         num_snippets = args.num_snippets,
