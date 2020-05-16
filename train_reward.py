@@ -21,7 +21,7 @@ from helpers.utils import *
 from reward_metric import get_corr_with_ground
 
 
-def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, validation=True, verbose=True):
+def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, verbose=True):
     """
     This function takes a set of demonstrations and produces 
     a training set consisting of pairs of clips with assigned preferences
@@ -36,21 +36,18 @@ def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, v
         assert min_snippet_length < min(demo_lens), "One of the trajectories is too short"
     
     training_data = []
-    validation_data = []
-    # pick 2 of demos to be validation demos
-    if validation:
-        val_idx = np.random.choice(len(dems), int(len(dems)/6),  replace = False)
+    n_honest = 0
 
     while len(training_data) < num_snippets:
 
         #pick two random demos
         i1, i2 = np.random.choice(len(dems) ,2,  replace = False)
 
-        if validation:
-            is_validation = (i1 in val_idx) and (i2 in val_idx)
-        else:
-            is_validation = False
-        # make d0['return'] <= d1['return']
+        # if validation:
+        #     is_validation = (i1 in val_idx) and (i2 in val_idx)
+        # else:
+        #     is_validation = False
+        # # make d0['return'] <= d1['return']
         d0, d1 = sorted([dems[i1], dems[i2]], key = lambda x: x['return'])   
         if d0['return'] == d1['return']:
             continue
@@ -73,17 +70,17 @@ def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, v
         # add the baseline for the true reward here and return it
         # function goes here
 
-        # this label shouldn't make a difference; reward model looks at individual states
-        if is_validation:
-            validation_data.append(([clip0, clip1], np.array([1])))
-        else:
-            training_data.append(([clip0, clip1], np.array([1])))
+        clip0_rew = np.sum(d0['rewards'][d0_start : d0_start+cur_len])
+        clip1_rew = np.sum(d1['rewards'][d1_start : d1_start+cur_len])
+
+        if clip0_rew <= clip1_rew:
+            n_honest += 1
+
+        training_data.append(([clip0, clip1], np.array([1])))
 
     logging.info(f'set length: {len(training_data)}')
-    logging.info(f'val set length: {len(validation_data)}')
 
-    return np.array(training_data), np.array(validation_data)
-
+    return np.array(training_data), n_honest/num_snippets
 
 # actual reward learning network
 class RewardNet(nn.Module):
@@ -407,14 +404,6 @@ def main():
         #         test_dems.append(get_file(fpath))
         #         break
 
-    test_set, _ = create_dataset(
-        dems = test_dems,
-        num_snippets = 1000,
-        min_snippet_length = args.min_snippet_length,
-        max_snippet_length = args.max_snippet_length,
-        validation = False,
-        verbose = False
-    )
 
     logging.info('Creating training data ...')
 
@@ -423,12 +412,12 @@ def main():
     max_return = (train_rows.max()['return'] - min_return) * args.max_return + min_return
 
     rew_step  = (max_return - min_return)/ 4
-    train_dems = []
+    dems = []
     seeds = []
-    while len(train_dems) < args.num_dems:
+    while len(dems) < args.num_dems:
 
         high = min_return + rew_step 
-        while (high <= max_return) and (len(train_dems) < args.num_dems):
+        while (high <= max_return) and (len(dems) < args.num_dems):
             #crerate boundaries to pick the demos from, and filter demos accordingly
             low = high - rew_step
             filtered_dems = train_rows[(train_rows['return'] >= low) & (train_rows['return'] <= high)]
@@ -437,7 +426,7 @@ def main():
             #choose random demo and append
             if len(new_seeds) > 0:
                 chosen_seed = np.random.choice(new_seeds, 1).item()
-                train_dems.append(get_file(chosen_seed + '.demo'))
+                dems.append(get_file(chosen_seed + '.demo'))
                 seeds.append(chosen_seed)
                 # for folder in args.demo_folder:
                 #     fpath = os.path.join(folder, chosen_seed + '.demo')
@@ -447,26 +436,44 @@ def main():
                 #         break
             high += rew_step
     
-    max_demo_return = max([demo['return'] for demo in train_dems])
-    max_demo_length = max([demo['length'] for demo in train_dems])
+    max_demo_return = max([demo['return'] for demo in dems])
+    max_demo_length = max([demo['length'] for demo in dems])
 
     # make training and validation datasets separate
     # so there are two different calls to create the two datasets
-    training_data = create_dataset(
+
+    train_dems = dems[ : int(args.num_dems * 0.8)]
+    val_dems = dems[int(args.num_dems * 0.8) : ]
+
+    train_set, _ = create_dataset(
         dems = train_dems,
         num_snippets = args.num_snippets,
         min_snippet_length = args.min_snippet_length,
         max_snippet_length = args.max_snippet_length,
-        validation = True,
+        verbose = False
+        )
+    val_set, _ = create_dataset(
+        dems = val_dems,
+        num_snippets = 1000,
+        min_snippet_length = args.min_snippet_length,
+        max_snippet_length = args.max_snippet_length,
+        verbose = False
+        )
+
+    test_set, true_test_acc = create_dataset(
+        dems = test_dems,
+        num_snippets = 1000,
+        min_snippet_length = args.min_snippet_length,
+        max_snippet_length = args.max_snippet_length,
         verbose = False
     )
 
+    print(f'GT reward test set accuracy = {true_test_acc}')
     # train a reward network using the dems collected earlier and save it
     logging.info("Training reward model for %s ...", args.env_name)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     trainer = RewardTrainer(args, device)
 
-    train_set, val_set = training_data
     state_dict_path, accs = trainer.learn_reward(train_set, val_set, test_set, test_dems)
 
     # print out predicted cumulative returns and actual returns
