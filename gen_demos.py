@@ -30,6 +30,7 @@ parser.add_argument('--distribution_mode', type=str, default='easy',
 parser.add_argument('--test_set', action = 'store_true')
 parser.add_argument('--start_level', type=int, default=0)
 parser.add_argument('--num_dems', default=100, type=int, help="number of demonstrations to use")
+parser.add_argument('--max_ep_len', default = 1000, type = int, help = "Max length of the demo")
 parser.add_argument('--models_dir', type = str)
 parser.add_argument('--sequential', type = int, default=0)
 parser.add_argument('--log_dir', type = str, default = 'trex/demos')
@@ -43,7 +44,7 @@ args = parser.parse_args()
 procgen_fn_true = lambda seed: ProcgenEnv(
     num_envs=1,
     env_name=args.env_name,
-    num_levels=99,
+    num_levels=1,
     start_level=seed,
     distribution_mode=args.distribution_mode,
     use_sequential_levels = args.sequential
@@ -97,7 +98,7 @@ with open (info_path, 'a') as csvfile:
         venv_fn = lambda: VecExtractDictObs(procgen_fn_true(seed), "rgb")
         model_path = np.random.choice(model_files)
         init_policy.load(model_path)
-        runner = ProcgenRunner(venv_fn, init_policy)
+        runner = ProcgenRunner(venv_fn, init_policy, nsteps = args.max_ep_len)
 
         demo = runner.collect_episodes(1)[0]
         demo['env_name'] = args.env_name

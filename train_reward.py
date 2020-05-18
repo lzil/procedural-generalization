@@ -328,7 +328,7 @@ def store_model(state_dict_path, max_return, max_length, accs, args):
     train_acc, val_acc, test_acc, pearson, spearman = accs
     with open(info_path, 'a') as f: 
         rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        rew_writer.writerow([rm_id, 'trex', args.env_name, args.distribution_mode,
+        rew_writer.writerow([args.rm_id, 'trex', args.env_name, args.distribution_mode,
                             args.num_dems, max_return, max_length, args.sequential,
                             train_acc, val_acc, test_acc, pearson, spearman])
 

@@ -7,6 +7,7 @@ import os
 import cv2
 
 from helpers.utils import get_id
+from train_reward import get_file
 
 vid_folder = 'videos'
 os.makedirs(vid_folder, exist_ok=True)
@@ -19,14 +20,12 @@ os.makedirs(vid_folder, exist_ok=True)
 
 # only argument is demo path
 parser = argparse.ArgumentParser()
-parser.add_argument('demo_path')
+parser.add_argument('demo_id')
 args = parser.parse_args()
-path = args.demo_path
 
-with open(path, 'rb') as f:
-    demo = pickle.load(f)
+demo = get_file(args.demo_id + '.demo')
 
-demo_id = get_id(path)
+demo_id = demo['demo_id']
 observations = demo['observations']
 
 video_path = os.path.join(vid_folder, f'demo_{demo_id}.mp4')
@@ -35,7 +34,7 @@ if os.path.isfile(video_path):
 
 # set up video writer
 videodims = (64, 64)
-fourcc = cv2.VideoWriter_fourcc(*'avc1')
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 # fourcc = cv2.VideoWriter_fourcc('H', '2', '6', '4')
 video = cv2.VideoWriter(video_path, fourcc, 40, videodims)
 
