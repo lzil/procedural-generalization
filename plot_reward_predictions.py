@@ -78,11 +78,11 @@ for i, ax in enumerate(fig.axes):
     ax.plot(np.cumsum(true_rews), lw=2, label = 'true')
     ax.plot(np.cumsum(pred_rews), lw=2, label = 'predicted')
 
-plt.xlabel('timestep')
-plt.ylabel('cumulative reward')
+fig.text(0.5, 0.04, 'timestep', ha='center', va='center')
+fig.text(0.06, 0.5, 'cumulative reward', ha='center', va='center', rotation='vertical')
 
 handles, labels = ax.get_legend_handles_labels()
-fig.legend(handles, labels, loc='lower center')
+fig.legend(handles, labels, loc='center right')
 if rm_info is not None:
     fig.suptitle(f'reward model {rm_id}: {args.env_name}, {args.mode}, {args.sequential}; {rm_info.num_dems} dems', size='xx-large', weight='bold')
 else:
