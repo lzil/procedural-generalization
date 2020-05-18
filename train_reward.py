@@ -42,12 +42,6 @@ def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, v
 
         #pick two random demos
         i1, i2 = np.random.choice(len(dems) ,2,  replace = False)
-
-        # if validation:
-        #     is_validation = (i1 in val_idx) and (i2 in val_idx)
-        # else:
-        #     is_validation = False
-        # # make d0['return'] <= d1['return']
         d0, d1 = sorted([dems[i1], dems[i2]], key = lambda x: x['return'])   
         if d0['return'] == d1['return']:
             continue
@@ -392,23 +386,9 @@ def main():
 
     logging.info(f'Filtered demos: {len(train_rows)} training demos available, {args.num_dems} requested')
 
-    # acquiring test demos for correlations and test accuracy
-    logging.info('Creating testing data ...')
-    n_test_demos = 100
-    demo_ids_n = np.random.choice(test_rows['demo_id'], n_test_demos)
-    test_dems = []
-    for dem in demo_ids_n:
-        test_dems.append(get_file(dem + '.demo'))
-        # for folder in args.demo_folder:
-        #     fpath = os.path.join(folder, dem + '.demo')
-        #     if os.path.isfile(fpath):
-        #         test_dems.append(get_file(fpath))
-        #         break
+    logging.info('Creating training set ...')
 
-
-    logging.info('Creating training data ...')
-
-    #implemening uniformish distribution of demo returns
+    #implementing uniformish distribution of demo returns
     min_return = train_rows.min()['return']
     max_return = (train_rows.max()['return'] - min_return) * args.max_return + min_return
 
@@ -429,12 +409,6 @@ def main():
                 chosen_seed = np.random.choice(new_seeds, 1).item()
                 dems.append(get_file(chosen_seed + '.demo'))
                 seeds.append(chosen_seed)
-                # for folder in args.demo_folder:
-                #     fpath = os.path.join(folder, chosen_seed + '.demo')
-                #     if os.path.isfile(fpath):
-                #         seeds.append(chosen_seed)
-                #         dems.append(get_file(fpath))
-                #         break
             high += rew_step
     
     max_demo_return = max([demo['return'] for demo in dems])
@@ -453,6 +427,8 @@ def main():
         max_snippet_length = args.max_snippet_length,
         verbose = False
         )
+
+    logging.info('Creating validation set ...')
     
     val_set, _ = create_dataset(
         dems = val_dems,
@@ -461,6 +437,14 @@ def main():
         max_snippet_length = args.max_snippet_length,
         verbose = False
         )
+
+    # acquiring test demos for correlations and test accuracy
+    logging.info('Creating testing set ...')
+    n_test_demos = 100
+    demo_ids_n = np.random.choice(test_rows['demo_id'], n_test_demos)
+    test_dems = []
+    for dem in demo_ids_n:
+        test_dems.append(get_file(dem + '.demo'))
 
     test_set, true_test_acc = create_dataset(
         dems = test_dems,

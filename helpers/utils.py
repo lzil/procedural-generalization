@@ -63,7 +63,10 @@ def log_this(config, log_dir, log_name=None, checkpoints=True):
 
 
 # extract id from the path. a bit hacky but should get the job done
+# just returns the id if the id is the input
 def get_id(path):
+    if '.' not in path and '/' not in path:
+        return path
     rm_id = '.'.join(os.path.basename(path).split('.')[:-1])
     return rm_id
 
