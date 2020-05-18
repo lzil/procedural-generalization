@@ -386,8 +386,9 @@ def main():
     }
 
     for path in args.demo_csv:
-        train_rows = filter_csv_pandas(path, {**constraints, **{'set_name': 'train'}})
-        test_rows = filter_csv_pandas(path, {**constraints, **{'set_name': 'test'}})
+        all_rows = pd.read_csv(path)
+        train_rows = filter_csv_pandas(all_rows, {**constraints, **{'set_name': 'train'}})
+        test_rows = filter_csv_pandas(all_rows, {**constraints, **{'set_name': 'test'}})
 
     logging.info(f'Filtered demos: {len(train_rows)} training demos available, {args.num_dems} requested')
 
@@ -452,6 +453,7 @@ def main():
         max_snippet_length = args.max_snippet_length,
         verbose = False
         )
+    
     val_set, _ = create_dataset(
         dems = val_dems,
         num_snippets = 1000,

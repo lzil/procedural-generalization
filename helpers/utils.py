@@ -105,8 +105,7 @@ def filter_csv(path, constraints, max_rows=1000000):
     return rows
 
 # helper function using pandas
-def filter_csv_pandas(path, constraints):
-    infos = pd.read_csv(path)
+def filter_csv_pandas(infos, constraints):
     if 'env_name' in constraints:
         infos = infos[infos['env_name'] == constraints['env_name']]
     if 'mode' in constraints:
