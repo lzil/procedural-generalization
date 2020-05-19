@@ -21,7 +21,7 @@ from helpers.utils import *
 from reward_metric import get_corr_with_ground
 
 
-def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, verbose=True):
+def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, verbose=True, use_snippet_rewards=False):
     """
     This function takes a set of demonstrations and produces 
     a training set consisting of pairs of clips with assigned preferences
@@ -35,10 +35,10 @@ def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, v
         logging.info(f'demo length: min = {min(demo_lens)}, max = {max(demo_lens)}')
         assert min_snippet_length < min(demo_lens), "One of the trajectories is too short"
     
-    training_data = []
+    data = []
     n_honest = 0
 
-    while len(training_data) < num_snippets:
+    while len(data) < num_snippets:
 
         #pick two random demos
         i1, i2 = np.random.choice(len(dems) ,2,  replace = False)
@@ -51,7 +51,7 @@ def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, v
         #the later starting clip from the better trajectory
         cur_min_len = min(d0['length'], d1['length'])
         cur_max_snippet_len = min(cur_min_len, max_snippet_length)
-        #randomly choose snipped length
+        #randomly choose snippet length
         cur_len = np.random.randint(min_snippet_length, cur_max_snippet_len)
 
         #pick tj snippet to be later than ti
@@ -61,20 +61,20 @@ def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, v
         clip0  = d0['observations'][d0_start : d0_start+cur_len]
         clip1  = d1['observations'][d1_start : d1_start+cur_len]
 
-        # add the baseline for the true reward here and return it
-        # function goes here
-
         clip0_rew = np.sum(d0['rewards'][d0_start : d0_start+cur_len])
         clip1_rew = np.sum(d1['rewards'][d1_start : d1_start+cur_len])
 
         if clip0_rew <= clip1_rew:
             n_honest += 1
+        elif use_snippet_rewards:
+            # swap if incorrectly labeled and using true snippet rewards
+            clip0, clip1 = clip1, clip0
 
-        training_data.append(([clip0, clip1], np.array([1])))
+        data.append(([clip0, clip1], np.array([1])))
 
-    logging.info(f'set length: {len(training_data)}')
+    logging.info(f'set length: {len(data)}')
 
-    return np.array(training_data), n_honest/num_snippets
+    return np.array(data), n_honest/num_snippets
 
 # actual reward learning network
 class RewardNet(nn.Module):
@@ -280,6 +280,7 @@ def parse_config():
     parser.add_argument('--lam_l1', type=float, default=0, help='l1 penalization of abs value of output')
     parser.add_argument('--weight_decay', type=float, default=0, help='weight decay of updates')
     parser.add_argument('--output_abs', action='store_true', help='absolute value the output of reward model')
+    parser.add_argument('--use_snippet_rewards', action='store_true', help='use true rewards instead of demonstration ones')
     
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
     parser.add_argument('--log_dir', default='trex/logs', help='general logs directory')
@@ -425,7 +426,8 @@ def main():
         num_snippets = args.num_snippets,
         min_snippet_length = args.min_snippet_length,
         max_snippet_length = args.max_snippet_length,
-        verbose = False
+        verbose = False,
+        use_snippet_rewards = args.use_snippet_rewards
         )
 
     logging.info('Creating validation set ...')
@@ -435,7 +437,8 @@ def main():
         num_snippets = 1000,
         min_snippet_length = args.min_snippet_length,
         max_snippet_length = args.max_snippet_length,
-        verbose = False
+        verbose = False,
+        use_snippet_rewards = args.use_snippet_rewards
         )
 
     # acquiring test demos for correlations and test accuracy
@@ -451,10 +454,11 @@ def main():
         num_snippets = 1000,
         min_snippet_length = args.min_snippet_length,
         max_snippet_length = args.max_snippet_length,
-        verbose = False
+        verbose = False,
+        use_snippet_rewards = args.use_snippet_rewards
     )
 
-    print(f'GT reward test set accuracy = {true_test_acc}')
+    logging.info(f'GT reward test set accuracy = {true_test_acc}')
     # train a reward network using the dems collected earlier and save it
     logging.info("Training reward model for %s ...", args.env_name)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
