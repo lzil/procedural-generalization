@@ -185,7 +185,7 @@ class RewardTrainer:
                 test_acc, test_loss = self.calc_accuracy(test_set)
                 pearson, spearman = get_corr_with_ground(test_dems, self.net)
 
-                writer.writerow([epoch*self.args.epoch_size, train_acc, train_loss, val_acc, val_loss, test_acc, test_loss, pearson, spearman])
+                writer.writerow([epoch*self.args.epoch_size, train_acc, train_loss.item(), val_acc, val_loss.item(), test_acc, test_loss.item(), pearson, spearman])
 
                 avg_reward = np.mean(np.array(reward_list))
                 avg_abs_reward = np.mean(np.array(abs_reward_list))
