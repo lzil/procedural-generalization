@@ -38,6 +38,7 @@ demo_infos = demo_infos[demo_infos['env_name']==args.env_name]
 demo_infos = demo_infos[demo_infos['mode']==args.mode]
 demo_infos = demo_infos[demo_infos['sequential'] == args.sequential]
 demo_infos = demo_infos[demo_infos['length'] > 100]
+demo_infos = demo_infos[demo_infos['set_name'] == 'test']
 # demo_infos = demo_infos[demo_infos['demo_id'] == '1_170_187_799']
 
 rm_info = None
