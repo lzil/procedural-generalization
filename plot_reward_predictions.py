@@ -19,7 +19,7 @@ parser.add_argument('--mode', default='easy')
 parser.add_argument('--sequential', type = int, default=0)
 
 parser.add_argument('--demo_csv', default='trex/demos/demo_infos.csv')
-parser.add_argument('--reward_csv', default=None)
+parser.add_argument('--reward_csv', default='trex/reward_models/rm_infos.csv')
 parser.add_argument('--reward_model', type = str)
 
 args = parser.parse_args()
@@ -60,6 +60,10 @@ if args.reward_csv is not None:
 
 fig, axs = plt.subplots(3,4,sharex=True, sharey=True, figsize=(12, 7))
 
+true_rews = dems[0][1]['rewards']
+pred_rews = reward_function(dems[0][1]['observations'])
+norm_const = np.sum(true_rews)/np.sum(pred_rews) 
+
 for i, ax in enumerate(fig.axes):
     demo_id, demo = dems[i]
     true_rews = demo['rewards']
@@ -78,7 +82,7 @@ for i, ax in enumerate(fig.axes):
 
     # plot cumulative rewards for demonstration
     ax.plot(np.cumsum(true_rews), lw=2, label = 'true')
-    ax.plot(np.cumsum(pred_rews), lw=2, label = 'predicted')
+    ax.plot(np.cumsum(pred_rews) * norm_const, lw=2, label = 'predicted')
 
 fig.text(0.5, 0.04, 'timestep', ha='center', va='center')
 fig.text(0.06, 0.5, 'cumulative reward', ha='center', va='center', rotation='vertical')

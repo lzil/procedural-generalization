@@ -21,13 +21,13 @@ from helpers.utils import *
 from reward_metric import get_corr_with_ground
 
 
-def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, verbose=True, use_snippet_rewards=False):
+def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, verbose=True, use_snippet_rewards=False, use_clip_heuristic = True):
     """
     This function takes a set of demonstrations and produces 
     a training set consisting of pairs of clips with assigned preferences
     """
 
-    if verbose:
+    if verbose: 
         logging.info( f' {len(dems)} demonstrations provided')
         logging.info(f"demo lengths : {[d['length'] for d in dems]}")
         logging.info(f"demo returns : {[d['return'] for d in dems]}")
@@ -54,9 +54,14 @@ def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, v
         #randomly choose snippet length
         cur_len = np.random.randint(min_snippet_length, cur_max_snippet_len)
 
-        #pick tj snippet to be later than ti
-        d0_start = np.random.randint(cur_min_len - cur_len + 1)
-        d1_start = np.random.randint(d0_start, d1['length'] - cur_len + 1)
+        if use_clip_heuristic: 
+            #pick tj snippet to be later than ti
+            d0_start = np.random.randint(cur_min_len - cur_len + 1)
+            d1_start = np.random.randint(d0_start, d1['length'] - cur_len + 1)
+        else:  
+            #pick randomly
+            d0_start = np.random.randint(d0['length'] - cur_len)
+            d1_start = np.random.randint(d1['length'] - cur_len)
 
         clip0  = d0['observations'][d0_start : d0_start+cur_len]
         clip1  = d1['observations'][d1_start : d1_start+cur_len]
@@ -83,19 +88,33 @@ class RewardNet(nn.Module):
         self.output_abs = output_abs
 
         self.model = nn.Sequential(
-            nn.Conv2d(3, 16, 7, stride=3),
+            nn.Conv2d(3, 32, 3, stride=1),
+            nn.MaxPool2d(4, stride=2),
             nn.LeakyReLU(),
-            nn.Conv2d(16, 16, 5, stride=2),
+            nn.Conv2d(32, 32, 3, stride=1),
+            nn.MaxPool2d(4, stride=2),
             nn.LeakyReLU(),
-            nn.Conv2d(16, 16, 3, stride=1),
-            nn.LeakyReLU(),
-            nn.Conv2d(16, 16, 3, stride=1),
+            nn.Conv2d(32, 32, 3, stride=1),
             nn.LeakyReLU(),
             nn.Flatten(),
-            nn.Linear(16*16, 64),
+            nn.Linear(11*11*32, 64),
             nn.LeakyReLU(),
             nn.Linear(64, 1)
         )
+        # self.model = nn.Sequential(
+        #     nn.Conv2d(3, 16, 7, stride=3),
+        #     nn.LeakyReLU(),
+        #     nn.Conv2d(16, 16, 5, stride=2),
+        #     nn.LeakyReLU(),
+        #     nn.Conv2d(16, 16, 3, stride=1),
+        #     nn.LeakyReLU(),
+        #     nn.Conv2d(16, 16, 3, stride=1),
+        #     nn.LeakyReLU(),
+        #     nn.Flatten(),
+        #     nn.Linear(16*16, 64),
+        #     nn.LeakyReLU(),
+        #     nn.Linear(64, 1)
+        # )
 
     def predict_returns(self, traj):
         '''calculate cumulative return of trajectory'''
@@ -124,6 +143,7 @@ class RewardNet(nn.Module):
         all_r_i, abs_r_i = self.predict_returns(traj_i)
         all_r_j, abs_r_j = self.predict_returns(traj_j)
         return torch.stack((all_r_i, all_r_j)), abs_r_i + abs_r_j
+
 
 
 # trainer wrapper in order to make training the reward model a neat process
@@ -190,7 +210,7 @@ class RewardTrainer:
                 avg_reward = np.mean(np.array(reward_list))
                 avg_abs_reward = np.mean(np.array(abs_reward_list))
 
-                logging.info(f"n_samples: {epoch*self.args.epoch_size:6g} | loss: {epoch_loss:5.2f} | rewards: {avg_reward.item():5.2f}/{avg_abs_reward.item():.2f} | pc: {pearson:5.2f} | sc: {spearman:5.2f}")
+                logging.info(f"n_samples: {(epoch+1)*self.args.epoch_size:6g} | loss: {epoch_loss:5.2f} | rewards: {avg_reward.item():5.2f}/{avg_abs_reward.item():.2f} | pc: {pearson:5.2f} | sc: {spearman:5.2f}")
                 logging.info(f'   | train_acc : {train_acc:6.4f} | val_acc : {val_acc:6.4f} | test_acc : {test_acc:6.4f}')
                 logging.info(f'   | train_loss: {train_loss:6.4f} | val_loss: {val_loss:6.4f} | test_loss: {test_loss:6.4f}')
 
@@ -253,7 +273,7 @@ class RewardTrainer:
     def predict_traj_return(self, traj):
         return sum(self.predict_reward_sequence(traj))
 
-
+ 
 def parse_config():
     parser = argparse.ArgumentParser(description='Default arguments to initialize and load the model and env')
     parser.add_argument('-c', '--config', type=str, default=None)
@@ -281,7 +301,8 @@ def parse_config():
     parser.add_argument('--weight_decay', type=float, default=0, help='weight decay of updates')
     parser.add_argument('--output_abs', action='store_true', help='absolute value the output of reward model')
     parser.add_argument('--use_snippet_rewards', action='store_true', help='use true rewards instead of demonstration ones')
-    
+    parser.add_argument('--use_clip_heuristic', type = bool, default = True, help='always pick later part of a better trajectory when generating clips')
+
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
     parser.add_argument('--log_dir', default='trex/logs', help='general logs directory')
 
@@ -427,7 +448,8 @@ def main():
         min_snippet_length = args.min_snippet_length,
         max_snippet_length = args.max_snippet_length,
         verbose = False,
-        use_snippet_rewards = args.use_snippet_rewards
+        use_snippet_rewards = args.use_snippet_rewards,
+        use_clip_heuristic = args.use_clip_heuristic
         )
 
     logging.info('Creating validation set ...')
@@ -438,7 +460,8 @@ def main():
         min_snippet_length = args.min_snippet_length,
         max_snippet_length = args.max_snippet_length,
         verbose = False,
-        use_snippet_rewards = args.use_snippet_rewards
+        use_snippet_rewards = args.use_snippet_rewards,
+        use_clip_heuristic = args.use_clip_heuristic
         )
 
     # acquiring test demos for correlations and test accuracy
@@ -455,7 +478,8 @@ def main():
         min_snippet_length = args.min_snippet_length,
         max_snippet_length = args.max_snippet_length,
         verbose = False,
-        use_snippet_rewards = args.use_snippet_rewards
+        use_snippet_rewards = args.use_snippet_rewards,
+        use_clip_heuristic = args.use_clip_heuristic
     )
 
     logging.info(f'GT reward test set accuracy = {true_test_acc}')
