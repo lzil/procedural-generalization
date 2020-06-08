@@ -5,6 +5,7 @@ videos/
 old/
 __pycache__/
 .DS_Store
+results/
 
 Video
 train-procgen/
