@@ -120,6 +120,10 @@ def filter_csv_pandas(infos, constraints):
     if 'demo_min_len' in constraints:
         # using > here instead of >=
         infos = infos[infos['length'] > constraints['demo_min_len']]
+    if 'demo_max_len' in constraints:
+        infos = infos[infos['length'] <= constraints['demo_max_len']]
+    if 'demo_max_return' in constraints:
+        infos = infos[infos['return'] <= constraints['demo_max_return']]
     return infos
 
 
@@ -132,3 +136,17 @@ def list_files(dir):
             r.append(os.path.join(root, name))
     return r
 
+
+def make_action_layer(a):
+    x = a//4 * 16
+    y = a%4 * 16
+    ac_layer = np.zeros((64,64))
+    ac_layer[x : x+16, y : y+16] = np.ones((16,16))
+
+    return ac_layer.astype(np.uint8).reshape(64,64,1)
+
+def make_action_demo(demo):
+    ac_stack =np.array([make_action_layer(a) for a in demo['actions']], dtype = np.uint8)  
+    demo['observations'] = np.append(demo['observations'], ac_stack, axis = -1)
+    
+    return demo

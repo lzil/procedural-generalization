@@ -8,7 +8,7 @@ from train_reward import RewardNet, get_file
 import torch
 import pandas as pd
 
-from helpers.utils import get_id, filter_csv_pandas
+from helpers.utils import get_id, filter_csv_pandas, make_action_demo
 
 mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=["mediumspringgreen", "salmon"]) 
 mpl.rcParams["font.family"] = "helvetica"
@@ -44,7 +44,7 @@ demo_infos = demo_infos[demo_infos['set_name'] == 'test']
 # choose 12 of the demos at random to show
 dems = []
 for f_name in np.random.choice(demo_infos['demo_id'], 12):
-    dems.append((f_name, get_file(f_name+'.demo')))
+    dems.append((f_name, make_action_demo(get_file(f_name+'.demo'))))
 
 
 # get info about the reward model if csv is provided
@@ -62,7 +62,7 @@ fig, axs = plt.subplots(3,4,sharex=True, sharey=True, figsize=(12, 7))
 
 true_rews = dems[0][1]['rewards']
 pred_rews = reward_function(dems[0][1]['observations'])
-norm_const = np.sum(true_rews)/np.sum(pred_rews) 
+norm_const = abs(np.sum(true_rews)/np.sum(pred_rews)) 
 
 for i, ax in enumerate(fig.axes):
     demo_id, demo = dems[i]

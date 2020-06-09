@@ -20,8 +20,7 @@ import logging
 from helpers.utils import *
 from reward_metric import get_corr_with_ground
 
-
-def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, verbose=True, use_snippet_rewards=False, use_clip_heuristic = True):
+def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, verbose=True, use_snippet_rewards=False, use_clip_heuristic = True, ice = False):
     """
     This function takes a set of demonstrations and produces 
     a training set consisting of pairs of clips with assigned preferences
@@ -37,7 +36,8 @@ def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, v
     
     data = []
     n_honest = 0
-
+    n_fruits = 0
+    n_icecreams = 0
     while len(data) < num_snippets:
 
         #pick two random demos
@@ -69,6 +69,16 @@ def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, v
         clip0_rew = np.sum(d0['rewards'][d0_start : d0_start+cur_len])
         clip1_rew = np.sum(d1['rewards'][d1_start : d1_start+cur_len])
 
+        # clip0_rewards = d0['rewards'][d0_start : d0_start+cur_len]
+        # clip1_rewards = d1['rewards'][d1_start : d1_start+cur_len]
+
+        # # if clip0_rew == clip1_rew:
+        # #     continue
+
+
+        # is_ice = (np.sum(clip0_rewards==-4) +  np.sum(clip1_rewards==-4)) > 0 
+
+        # if (ice and is_ice) or (~ice):
         if clip0_rew <= clip1_rew:
             n_honest += 1
         elif use_snippet_rewards:
@@ -77,8 +87,8 @@ def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, v
 
         data.append(([clip0, clip1], np.array([1])))
 
-    logging.info(f'set length: {len(data)}')
 
+    logging.info(f'set length: {len(data)}')
     return np.array(data), n_honest/num_snippets
 
 # actual reward learning network
@@ -88,16 +98,16 @@ class RewardNet(nn.Module):
         self.output_abs = output_abs
 
         self.model = nn.Sequential(
-            nn.Conv2d(3, 32, 3, stride=1),
+            nn.Conv2d(4, 16, 3, stride=1),
             nn.MaxPool2d(4, stride=2),
             nn.LeakyReLU(),
-            nn.Conv2d(32, 32, 3, stride=1),
+            nn.Conv2d(16, 16, 3, stride=1),
             nn.MaxPool2d(4, stride=2),
             nn.LeakyReLU(),
-            nn.Conv2d(32, 32, 3, stride=1),
+            nn.Conv2d(16, 16, 3, stride=1),
             nn.LeakyReLU(),
             nn.Flatten(),
-            nn.Linear(11*11*32, 64),
+            nn.Linear(11*11*16, 64),
             nn.LeakyReLU(),
             nn.Linear(64, 1)
         )
@@ -429,7 +439,7 @@ def main():
             #choose random demo and append
             if len(new_seeds) > 0:
                 chosen_seed = np.random.choice(new_seeds, 1).item()
-                dems.append(get_file(chosen_seed + '.demo'))
+                dems.append(make_action_demo(get_file(chosen_seed + '.demo')))
                 seeds.append(chosen_seed)
             high += rew_step
     
@@ -452,6 +462,21 @@ def main():
         use_clip_heuristic = args.use_clip_heuristic
         )
 
+    # train_set_ice, _ = create_dataset(
+    #     dems = train_dems,
+    #     num_snippets = args.num_snippets,
+    #     min_snippet_length = args.min_snippet_length,
+    #     max_snippet_length = args.max_snippet_length,
+    #     verbose = False,
+    #     use_snippet_rewards = args.use_snippet_rewards,
+    #     use_clip_heuristic = args.use_clip_heuristic,
+    #     ice = True
+    #     )
+
+    # train_set = np.append(train_set,train_set_ice, axis = 0)
+
+    print(len(train_set))
+
     logging.info('Creating validation set ...')
     
     val_set, _ = create_dataset(
@@ -470,7 +495,7 @@ def main():
     demo_ids_n = np.random.choice(test_rows['demo_id'], n_test_demos)
     test_dems = []
     for dem in demo_ids_n:
-        test_dems.append(get_file(dem + '.demo'))
+        test_dems.append(make_action_demo(get_file(dem + '.demo')))
 
     test_set, true_test_acc = create_dataset(
         dems = test_dems,
@@ -479,7 +504,7 @@ def main():
         max_snippet_length = args.max_snippet_length,
         verbose = False,
         use_snippet_rewards = args.use_snippet_rewards,
-        use_clip_heuristic = args.use_clip_heuristic
+        use_clip_heuristic = args.use_clip_heuristic,
     )
 
     logging.info(f'GT reward test set accuracy = {true_test_acc}')
@@ -495,7 +520,7 @@ def main():
     with torch.no_grad():
         logging.info('_____TRAIN set_____')
         logging.info('true     |predicted')
-        for demo in sorted(dems[:20], key = lambda x: x['return']):
+        for demo in sorted(dems[:20], key = lambda x: x['return']): 
             logging.info(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}")
 
     with torch.no_grad():
@@ -507,6 +532,8 @@ def main():
     logging.info(f"Final train set accuracy {trainer.calc_accuracy(train_set[:5000])[0]}")
 
     store_model(state_dict_path, max_demo_return, max_demo_length, accs, args)
+
+
 
 
 if __name__=="__main__":

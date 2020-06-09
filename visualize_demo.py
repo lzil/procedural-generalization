@@ -12,7 +12,7 @@ from train_reward import get_file
 vid_folder = 'videos'
 os.makedirs(vid_folder, exist_ok=True)
 
-# # send all the output from cv2 to a log file
+# # send all the output from cv2 to a log fi
 # os.makedirs('logs', exist_ok=True)
 # f = open('logs/log_visualize_demo.log', 'a')
 # sys.stdout = f
