@@ -1,5 +1,6 @@
 from procgen import ProcgenEnv
 from baselines.common.vec_env import VecExtractDictObs
+import numpy as np
 
 class ProcgenContinuous(ProcgenEnv):
 
@@ -9,9 +10,8 @@ class ProcgenContinuous(ProcgenEnv):
         super().__init__(**kwargs)
 
 
-    def step(self, actions):
-        print('dones')
-        ob, rew, dones, infos = super().step(actions)
+    def step_wait(self):
+        ob, rew, dones, infos = super().step_wait()
         self.steps += 1
         
         dones = np.full_like(dones, False)
