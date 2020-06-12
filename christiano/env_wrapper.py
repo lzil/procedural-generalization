@@ -4,7 +4,7 @@ import gym
 
 class gym_procgen_continuous(gym.Wrapper):
   """
-  :param env: (gym.Env) Gym environment that will be wrapped
+  :param env_name: (str) name of the Procgen environment that will be wrapped
   :param max_steps: (int) Max number of steps per episode
   """
   def __init__(self, env_name, max_steps=10000, **kwargs):
@@ -32,6 +32,7 @@ class gym_procgen_continuous(gym.Wrapper):
     self.current_step += 1
     obs, reward, done, info = self.env.step(action)
     
+    # Replace done with negative reward and keep the episode going
     if done:
         reward = -10
         done = False
@@ -42,3 +43,30 @@ class gym_procgen_continuous(gym.Wrapper):
       # Update the info dict to signal that the limit was exceeded
       info['time_limit_reached'] = True
     return obs, reward, done, info
+
+
+from stable_baselines.common.vec_env import VecEnvWrapper
+class ProxyRewardWrapper(VecEnvWrapper):
+    """
+    This wrapper changes the reward of the provided environment to some function
+    of its observations
+
+    r_model must be a callable function that takes batch of obervations
+    and returns batch of rewards
+
+    """
+
+    def __init__(self, venv, r_model):
+        VecEnvWrapper.__init__(self, venv)
+        assert callable(r_model)
+        self.r_model = r_model
+
+    def reset(self):
+        obs = self.venv.reset()
+        return obs
+
+    def step_wait(self):
+        obs, rews, dones, infos = self.venv.step_wait()
+        return obs, self.r_model(obs), dones, infos
+
+    

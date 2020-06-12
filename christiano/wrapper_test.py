@@ -1,7 +1,8 @@
-from env_wrapper import ProcgenContinuous, gym_procgen_continuous
+from env_wrapper import gym_procgen_continuous
 from procgen import ProcgenGym3Env, ProcgenEnv
-from gym3 import ExtractDictObWrapper, ToBaselinesVecEnv
-import gym3
+# from gym3 import ExtractDictObWrapper, ToBaselinesVecEnv
+# import gym3
+from stable_baselines.common import make_vec_env
 import numpy as np
 import tensorflow as tf
 import os
@@ -18,7 +19,7 @@ def no_death_test():
         dones.append(done)
 
     assert(np.sum(dones) == 0)
-    print('Success! : no dones in 2k timesteps')
+    print('Success! : no dones before max_steps timesteps')
 
 def ep_ends_test():
     env = gym_procgen_continuous(env_name = 'fruitbot', max_steps = 1000)
@@ -36,7 +37,7 @@ def ep_ends_test():
 def baseline_test():
     from stable_baselines import PPO2
     from stable_baselines.common.policies import MlpPolicy
-    from stable_baselines.common import make_vec_env
+    
     gym_env_fn = lambda: gym_procgen_continuous(env_name = 'fruitbot')
     env = make_vec_env(gym_env_fn, n_envs = 64)
 
@@ -45,9 +46,23 @@ def baseline_test():
 
     print('Success! : stable baselines trained on the vectorized environment')
 
+def ProxyRewardWrapper_test():
+    from env_wrapper import ProxyRewardWrapper
+    env = make_vec_env('CartPole-v1', n_envs=4)
+    reward_model = lambda x: np.zeros(4)
+    new_env = ProxyRewardWrapper(env, reward_model)
+
+    new_env.reset()
+    for i in range(1001): 
+        ob, rew, done, info = new_env.step(4*[new_env.action_space.sample()]) 
+        assert((rew == np.zeros(4)).all())
+    
+    print('Success! : Replaced with zero reward')
 
 if __name__ == "__main__":
+    
     no_death_test()
     ep_ends_test()
     baseline_test()
-#     # video_test()
+    ProxyRewardWrapper_test()
+    
