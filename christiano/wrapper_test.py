@@ -1,7 +1,5 @@
 from env_wrapper import gym_procgen_continuous
 from procgen import ProcgenGym3Env, ProcgenEnv
-# from gym3 import ExtractDictObWrapper, ToBaselinesVecEnv
-# import gym3
 from stable_baselines.common import make_vec_env
 import numpy as np
 import tensorflow as tf
@@ -20,6 +18,7 @@ def no_death_test():
 
     assert(np.sum(dones) == 0)
     print('Success! : no dones before max_steps timesteps')
+
 
 def ep_ends_test():
     env = gym_procgen_continuous(env_name = 'fruitbot', max_steps = 1000)
@@ -46,6 +45,7 @@ def baseline_test():
 
     print('Success! : stable baselines trained on the vectorized environment')
 
+
 def ProxyRewardWrapper_test():
     from env_wrapper import ProxyRewardWrapper
     env = make_vec_env('CartPole-v1', n_envs=4)
@@ -58,6 +58,7 @@ def ProxyRewardWrapper_test():
         assert((rew == np.zeros(4)).all())
     
     print('Success! : Replaced with zero reward')
+
 
 if __name__ == "__main__":
     
