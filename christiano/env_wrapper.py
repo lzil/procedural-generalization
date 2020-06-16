@@ -16,6 +16,9 @@ class gym_procgen_continuous(gym.Wrapper):
     # Counter of steps per episode
     self.current_step = 0
   
+  def set_maxsteps(self, max_steps):
+    self.max_steps = max_steps
+
   def reset(self):
     """
     Reset the environment 

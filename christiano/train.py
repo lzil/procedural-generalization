@@ -59,8 +59,36 @@ def collect_annotations(env, policy, num_pairs, clip_size):
     '''Collects episodes using the provided policy, slices them to snippets of given length,
     selects pairs randomly and annotates 
     Returns a list of tuples ([clip0, clip1], label), where label is float in [0,1]
+
     '''
-    pass
+    env.set_maxsteps(clip_size * 2 * num_pairs+10)
+    clip_pool = []
+
+    obs = env.reset()
+    while len(clip_pool) < num_pairs *2:
+        clip = {}
+        clip['observations'] = []
+        clip['return'] = 0
+        while len(clip) < clip_size:
+            # _states are only useful when using LSTM policies
+            action, _states = policy.predict(obs)
+            clip['observations'].append(obs)
+            obs, reward, done, info = env.step(action)    
+            clip['return'] += reward
+
+        clip_pool.append(clip)
+
+    clip_pairs = np.random.choice(clip_pool, (num_pairs, 2), replace = False)
+    data = []
+    for clip0, clip1 in clip_pairs:
+        if clip0['return'] > clip1['return']:
+            label = 0
+        elif clip0['return'] < clip1['return']:
+            label = 1 
+        elif clip0['return'] == clip1['return']:
+            label = 0.5
+
+        data.append(([clip0['observations'], clip1['observations']], label))
 
 
 def main():
