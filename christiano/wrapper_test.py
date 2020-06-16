@@ -36,9 +36,17 @@ def ep_ends_test():
 def baseline_test():
     from stable_baselines import PPO2
     from stable_baselines.common.policies import MlpPolicy
-    
+    from stable_baselines.common import env_checker
+
+
     gym_env_fn = lambda: gym_procgen_continuous(env_name = 'fruitbot')
+
+    env_checker.check_env(gym_env_fn())
+    print('Success! : environment is compatible with stable baselines')
+
     env = make_vec_env(gym_env_fn, n_envs = 64)
+
+    
 
     model = PPO2(MlpPolicy, env, verbose=1)
     model.learn(total_timesteps=10000)

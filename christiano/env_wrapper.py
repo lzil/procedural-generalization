@@ -42,7 +42,7 @@ class gym_procgen_continuous(gym.Wrapper):
       done = True
       # Update the info dict to signal that the limit was exceeded
       info['time_limit_reached'] = True
-    return obs, reward, done, info
+    return obs, np.float(reward), np.bool(done), info
 
 
 from stable_baselines.common.vec_env import VecEnvWrapper

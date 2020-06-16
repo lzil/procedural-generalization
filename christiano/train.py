@@ -1,5 +1,13 @@
 class AnnotationBuffer(object):
-    """Buffer of annotated pairs of clips"""
+    """Buffer of annotated pairs of clips
+    
+    Each entry is ([clip0, clip1], label)
+    clip0, clip2 : lists of observations
+    label : float in range [0,1] corresponding to which clip is preferred
+    label can also be 0.5 meaning clips are equal, or e.g. 0.95 corresponding 
+    to noize in labeling 
+    """
+
     def __init__(self, max_size):
         pass
 
@@ -8,10 +16,14 @@ class AnnotationBuffer(object):
         pass
 
     def sample_batch(self, n):
+        #probably adding noize to observations as a regularization (Ibarz et al. page 15)
         pass
 
     def sample_validation_batch(self, n):
         pass
+
+    def get_size(self):
+        '''returns buffer size'''
 
 class RewardNet(nn.Module):
     """Here we set up a callable reward model
@@ -29,8 +41,8 @@ def train_reward(reward_model, data_buffer, num_batches):
     Must have:
         Adaptive L2-regularization based on train vs validation loss
         L2-loss on the output
-        Gaussian noize on the input
         Output normalized to 0 mean and 0.05 variance across data_buffer
+        (Ibarz et al. page 15)
         
     '''
     pass
