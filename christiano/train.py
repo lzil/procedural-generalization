@@ -1,3 +1,8 @@
+import torch.nn as nn
+import torch
+from env_wrapper import gym_procgen_continuous
+import numpy as np
+
 class AnnotationBuffer(object):
     """Buffer of annotated pairs of clips
     
@@ -9,21 +14,34 @@ class AnnotationBuffer(object):
     """
 
     def __init__(self, max_size):
-        pass
+        self.current_size = 0
+        self.train_data = []
+        self.val_data = []
 
 
     def add(self, data):
-        pass
+        '''
+        1/e of data goes to the validatation set
+        the rest goes to the training set
+        '''
+        new_val_data , new_train_data = np.split(data, [int(len(data) / np.exp(1))])
+        self.val_data.extend(new_val_data)
+        self.train_data.extend(new_train_data)
+        
+        self.current_size += len(data)
+
 
     def sample_batch(self, n):
-        #probably adding noize to observations as a regularization (Ibarz et al. page 15)
-        pass
+        indices = np.random.choice(np.arange(len(self.train_data)), n, replace=False)
+        return np.array(self.train_data)[indices]
 
-    def sample_validation_batch(self, n):
-        pass
+    def sample_val_batch(self, n):
+        indices = np.random.choice(np.arange(len(self.val_data)), n, replace=False)
+        return np.array(self.val_data)[indices]
 
     def get_size(self):
         '''returns buffer size'''
+        return self.current_size
 
 class RewardNet(nn.Module):
     """Here we set up a callable reward model
@@ -55,10 +73,14 @@ def train_policy(env, reward_model, policy, num_steps):
     '''
     pass
 
+
+from collections import namedtuple
+Annotation = namedtuple('Annotation', ['clip0', 'clip1', 'label']) 
+
 def collect_annotations(env, policy, num_pairs, clip_size):
     '''Collects episodes using the provided policy, slices them to snippets of given length,
     selects pairs randomly and annotates 
-    Returns a list of tuples ([clip0, clip1], label), where label is float in [0,1]
+    Returns a list of named tuples (clip0, clip1, label), where label is float in [0,1]
 
     '''
     env.set_maxsteps(clip_size * 2 * num_pairs+10)
@@ -69,18 +91,20 @@ def collect_annotations(env, policy, num_pairs, clip_size):
         clip = {}
         clip['observations'] = []
         clip['return'] = 0
-        while len(clip) < clip_size:
+        while len(clip['observations']) < clip_size:
             # _states are only useful when using LSTM policies
             action, _states = policy.predict(obs)
             clip['observations'].append(obs)
             obs, reward, done, info = env.step(action)    
             clip['return'] += reward
-
+            # TODO
+            #probably should add noize to observations as a regularization (Ibarz et al. page 15)
         clip_pool.append(clip)
 
     clip_pairs = np.random.choice(clip_pool, (num_pairs, 2), replace = False)
     data = []
     for clip0, clip1 in clip_pairs:
+
         if clip0['return'] > clip1['return']:
             label = 0
         elif clip0['return'] < clip1['return']:
@@ -88,7 +112,9 @@ def collect_annotations(env, policy, num_pairs, clip_size):
         elif clip0['return'] == clip1['return']:
             label = 0.5
 
-        data.append(([clip0['observations'], clip1['observations']], label))
+        data.append(Annotation(clip0['observations'], clip1['observations'], label))
+
+    return data
 
 
 def main():
@@ -114,8 +140,8 @@ def main():
 
     for i in args.num_iters:
         num_pairs = get_num_pairs()
-        policy_save_path = 
-        rm_save_path = 
+        policy_save_path = 'policy'
+        rm_save_path = 'rm'
 
         reward_model = train_reward(reward_model, data_buffer, num_batches) 
         policy = train_policy(env, reward_model, policy, args.steps_per_iter)
