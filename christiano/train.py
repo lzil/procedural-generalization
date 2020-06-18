@@ -1,7 +1,12 @@
 import torch.nn as nn
 import torch.optim as optim
 import torch
-from env_wrapper import gym_procgen_continuous
+
+from stable_baselines import PPO2
+from stable_baselines.common.policies import MlpPolicy
+from stable_baselines.common import make_vec_env
+
+from env_wrapper import gym_procgen_continuous, ProxyRewardWrapper
 import numpy as np
 import random
 
@@ -81,8 +86,13 @@ class RewardNet(nn.Module):
         '''
         predicts the sum of rewards of the clip
         '''
+        self.model.train()
         x = clip.permute(0,3,1,2)
         return torch.sum(self.model(x))
+
+    def rew_fn(self, x):
+        self.model.eval()
+        return torch.squeeze(self.model(x.permute(0,3,1,2))).detach().cpu().numpy()
 
 
 
@@ -142,14 +152,23 @@ def train_reward(reward_model, data_buffer, num_batches, batch_size, device = 'c
     
 
 
-def train_policy(env_fn, reward_model, policy, num_steps):
+def train_policy(env_fn, reward_model, policy, num_steps, device):
     '''
     Creates new environment by wrapping the env, with ProxyRewardWrapper given the reward_model.
     Traines policy in the new envirionment for num_steps
     Returns retrained policy
     '''
-    proxy_reward_function = lambda x: reward_model(torch.tensor([x]).to(device))
-    pass
+
+    #creating the environment with reward predicted  from reward_model
+    reward_model.to(device)
+    proxy_reward_function = lambda x: reward_model.rew_fn(torch.tensor(x).float().to(device))
+    vec_env = make_vec_env(env_fn, n_envs = 64)
+    proxy_reward_env = ProxyRewardWrapper(vec_env, proxy_reward_function)
+
+    policy.set_env(proxy_reward_env)
+    policy.learn(num_steps)
+
+    
 
 
 from collections import namedtuple

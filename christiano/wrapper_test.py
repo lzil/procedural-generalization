@@ -56,12 +56,13 @@ def baseline_test():
 
 def ProxyRewardWrapper_test():
     from env_wrapper import ProxyRewardWrapper
-    env = make_vec_env('CartPole-v1', n_envs=4)
+    env = make_vec_env(lambda: gym_procgen_continuous(env_name = 'fruitbot'), n_envs=4)
+
     reward_model = lambda x: np.zeros(4)
     new_env = ProxyRewardWrapper(env, reward_model)
 
     new_env.reset()
-    for i in range(1001): 
+    for i in range(11): 
         ob, rew, done, info = new_env.step(4*[new_env.action_space.sample()]) 
         assert((rew == np.zeros(4)).all())
     

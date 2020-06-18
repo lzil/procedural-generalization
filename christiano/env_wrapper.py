@@ -70,6 +70,7 @@ class ProxyRewardWrapper(VecEnvWrapper):
 
     def step_wait(self):
         obs, rews, dones, infos = self.venv.step_wait()
-        return obs, self.r_model(obs), dones, infos
+        proxy_rew = self.r_model(obs)
+        return obs, proxy_rew, dones, infos
 
     
