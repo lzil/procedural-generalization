@@ -26,7 +26,7 @@ assert(len(data[0].clip0) == len(data[0].clip1) == 25)
 print('clips are of correct length')
 
 
-abuffer = AnnotationBuffer(10000)
+abuffer = AnnotationBuffer(max_size = 10000)
 
 abuffer.add(data)
 abuffer.add(collect_annotations(env_fn(), policy, 100, 25))

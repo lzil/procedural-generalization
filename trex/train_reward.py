@@ -309,7 +309,7 @@ def parse_config():
 
     # hopeully get rid of this
     parser.add_argument('--demo_folder', nargs='+', default=['trex/demos'], help='path to folders with demos')
-    parser.add_argument('--demo_csv', nargs='+', default=['trex/demos/demo_infos.csv'], help='path to csv files with demo info')
+    parser.add_argument('--demo_csv', nargs='+', default=['demos/demo_infos.csv'], help='path to csv files with demo info')
 
     parser.add_argument('--save_dir', default='trex/reward_models', help='where the models and csv get stored')
     parser.add_argument('--save_name', default=None, help='suffix to the name of the csv/file folder for saving')
