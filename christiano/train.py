@@ -152,7 +152,7 @@ def train_reward(reward_model, data_buffer, num_batches, batch_size, device = 'c
     
 
 
-def train_policy(env_fn, reward_model, policy, num_steps, device):
+def train_policy(venv_fn, reward_model, policy, num_steps, device):
     '''
     Creates new environment by wrapping the env, with ProxyRewardWrapper given the reward_model.
     Traines policy in the new envirionment for num_steps
@@ -161,9 +161,8 @@ def train_policy(env_fn, reward_model, policy, num_steps, device):
 
     #creating the environment with reward predicted  from reward_model
     reward_model.to(device)
-    proxy_reward_function = lambda x: reward_model.rew_fn(torch.tensor(x).float().to(device))
-    vec_env = make_vec_env(env_fn, n_envs = 64)
-    proxy_reward_env = ProxyRewardWrapper(vec_env, proxy_reward_function)
+    proxy_reward_function = lambda x: reward_model.rew_fn(torch.from_numpy(x).float().to(device))
+    proxy_reward_env = ProxyRewardWrapper(venv_fn(), proxy_reward_function)
 
     policy.set_env(proxy_reward_env)
     policy.learn(num_steps)

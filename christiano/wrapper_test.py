@@ -9,7 +9,7 @@ tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 def no_death_test():
-    env = gym_procgen_continuous(env_name = 'fruitbot')
+    env = gym_procgen_continuous(env_name = 'fruitbot', max_steps = 3000)
 
     dones = []
     for i in range(2000): 
@@ -49,7 +49,7 @@ def baseline_test():
     
 
     model = PPO2(MlpPolicy, env, verbose=1)
-    model.learn(total_timesteps=10000)
+    model.learn(total_timesteps=100000)
 
     print('Success! : stable baselines trained on the vectorized environment')
 

@@ -7,9 +7,10 @@ class gym_procgen_continuous(gym.Wrapper):
   :param env_name: (str) name of the Procgen environment that will be wrapped
   :param max_steps: (int) Max number of steps per episode
   """
-  def __init__(self, env_name, max_steps=10000, **kwargs):
+  def __init__(self, env_name, max_steps=1000, **kwargs):
     kwargs['use_sequential_levels'] = True
-    env = gym.make("procgen:procgen-"+ str(env_name) +"-v0", **kwargs) 
+    self.env_fn = lambda : gym.make("procgen:procgen-"+ str(env_name) +"-v0", **kwargs) 
+    env = self.env_fn()
     # Call the parent constructor, so we can access self.env later
     super(gym_procgen_continuous, self).__init__(env)
     self.max_steps = max_steps
@@ -25,6 +26,7 @@ class gym_procgen_continuous(gym.Wrapper):
     """
     # Reset the counter
     self.current_step = 0
+    self.env = self.env_fn()
     return self.env.reset()
 
   def step(self, action):
