@@ -3,12 +3,35 @@ import torch.optim as optim
 import torch
 
 from stable_baselines import PPO2
-from stable_baselines.common.policies import MlpPolicy
+from stable_baselines.common.policies import MlpPolicy, CnnPolicy
 from stable_baselines.common import make_vec_env
+from stable_baselines.common.evaluation import evaluate_policy
 
-from env_wrapper import gym_procgen_continuous, ProxyRewardWrapper
+
+from env_wrapper import Gym_procgen_continuous, Vec_reward_wrapper, Reward_wrapper
 import numpy as np
 import random
+import argparse
+
+import tensorflow as tf
+import os, time
+tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+
+def timeitt(method):
+    def timed(*args, **kw):
+        ts = time.time()
+        result = method(*args, **kw)
+        te = time.time()
+        if 'log_time' in kw:
+            name = kw.get('log_name', method.__name__.upper())
+            kw['log_time'][name] = int((te - ts) * 1000)
+        else:
+            print ('time spent by %r  %2.2f ms' % \
+                  (method.__name__, (te - ts) * 1000))
+        return result
+    return timed
 
 class AnnotationBuffer(object):
     """Buffer of annotated pairs of clips
@@ -20,11 +43,10 @@ class AnnotationBuffer(object):
     to noize in labeling 
     """
 
-    def __init__(self, max_size):
+    def __init__(self, max_size = 1000):
         self.current_size = 0
         self.train_data = []
         self.val_data = []
-
 
     def add(self, data):
         '''
@@ -110,6 +132,7 @@ def rm_loss_func(ret0, ret1, label, device = 'cuda:0'):
 
     return loss
 
+@timeitt
 def train_reward(reward_model, data_buffer, num_batches, batch_size, device = 'cuda:0'):
     '''
     Traines a given reward_model for num_batches from data_buffer
@@ -142,7 +165,8 @@ def train_reward(reward_model, data_buffer, num_batches, batch_size, device = 'c
             loss += rm_loss_func(ret0, ret1, label, device)
         
         loss = loss / batch_size
-        print(f'batch : {batch_i}, loss : {loss.item():6.2f}')
+        if batch_i % 100 == 0:
+            print(f'batch : {batch_i}, loss : {loss.item():6.2f}')
         loss.backward()
         optimizer.step()
 
@@ -151,10 +175,10 @@ def train_reward(reward_model, data_buffer, num_batches, batch_size, device = 'c
 
     
 
-
+@timeitt
 def train_policy(venv_fn, reward_model, policy, num_steps, device):
     '''
-    Creates new environment by wrapping the env, with ProxyRewardWrapper given the reward_model.
+    Creates new environment by wrapping the env, with Vec_reward_wrapper given the reward_model.
     Traines policy in the new envirionment for num_steps
     Returns retrained policy
     '''
@@ -162,17 +186,20 @@ def train_policy(venv_fn, reward_model, policy, num_steps, device):
     #creating the environment with reward predicted  from reward_model
     reward_model.to(device)
     proxy_reward_function = lambda x: reward_model.rew_fn(torch.from_numpy(x).float().to(device))
-    proxy_reward_env = ProxyRewardWrapper(venv_fn(), proxy_reward_function)
+    proxy_reward_venv = Vec_reward_wrapper(venv_fn(), proxy_reward_function)
 
-    policy.set_env(proxy_reward_env)
+    policy = PPO2(CnnPolicy, proxy_reward_venv, verbose=1)
     policy.learn(num_steps)
 
+    return policy
     
 
 
 from collections import namedtuple
 Annotation = namedtuple('Annotation', ['clip0', 'clip1', 'label']) 
 
+
+@timeitt
 def collect_annotations(env_fn, policy, num_pairs, clip_size):
     '''Collects episodes using the provided policy, slices them to snippets of given length,
     selects pairs randomly and annotates 
@@ -182,15 +209,16 @@ def collect_annotations(env_fn, policy, num_pairs, clip_size):
     env = env_fn()
     env.set_maxsteps(clip_size * 2 * num_pairs+10)
     clip_pool = []
-
     obs = env.reset()
     while len(clip_pool) < num_pairs *2:
         clip = {}
         clip['observations'] = []
         clip['return'] = 0
+        
         while len(clip['observations']) < clip_size:
             # _states are only useful when using LSTM policies
             action, _states = policy.predict(obs)
+            
             clip['observations'].append(obs)
             obs, reward, done, info = env.step(action)    
             clip['return'] += reward
@@ -216,35 +244,73 @@ def collect_annotations(env_fn, policy, num_pairs, clip_size):
 
 def main():
     ##setup args
+    parser = argparse.ArgumentParser(description='Procgen training, with a revised reward model')
+    parser.add_argument('-c', '--config', type=str, default=None)
+
+    parser.add_argument('--env_name', type=str, default='starpilot')
+    parser.add_argument('--distribution_mode', type=str, default='easy', choices=["easy", "hard", "exploration", "memory", "extreme"])
+    parser.add_argument('--num_levels', type=int, default=0)
+    parser.add_argument('--start_level', type=int, default=0)
+    parser.add_argument('--test_worker_interval', type=int, default=0)
+    parser.add_argument('--load_path', type=str, default=None)
+    parser.add_argument('--log_dir', type=str, default='trex/policy_logs')
+    parser.add_argument('--log_name', type=str, default='')
+    parser.add_argument('--reward_model_path', type = str, help="name and location for learned model params, e.g. ./learned_models/breakout.params")
+
+    # logs every num_envs * nsteps
+    parser.add_argument('--log_interval', type=int, default=5)
+    parser.add_argument('--save_interval', type=int, default=20)
+
+
+    args = parser.parse_args()
+
     args.init_buffer_size = 500
     args.clip_size = 25
     args.env_name = 'fruitbot'
-    args.steps_per_iter = 10**5
+    args.num_iters = 10
+    args.steps_per_iter = 10**6
     args.pairs_per_iter = 10**5
-    args.pairs__in_batch = 16
+    args.pairs_in_batch = 16
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     #initializing objects
-    env_fn = lambda: gym_procgen_continuous(env_name = args.env_name)
-    policy = PPO2(MlpPolicy, env_fn(), verbose=1)
+    env_fn = lambda: Gym_procgen_continuous(env_name = args.env_name)
+    venv_fn  = lambda:  make_vec_env(env_fn, n_envs = 64)
+
+    policy = PPO2(CnnPolicy, venv_fn(), verbose=1)
     reward_model = RewardNet()
     data_buffer = AnnotationBuffer()
 
 
     initial_data = collect_annotations(env_fn, policy, args.init_buffer_size, args.clip_size)
     data_buffer.add(initial_data)
+    print(f'Buffer size = {data_buffer.get_size()}')   
 
     num_batches = int(args.pairs_per_iter / args.pairs_in_batch)
 
-    for i in args.num_iters:
-        num_pairs = get_num_pairs()
+    for i in range(args.num_iters):
+        print(f'iter : {i+1}')
+        num_pairs = int(500 / (1+i))
         policy_save_path = 'policy' + str(i)
         rm_save_path = 'rm' + str(i)
 
-        reward_model = train_reward(reward_model, data_buffer, num_batches) 
-        policy = train_policy(env_fn, reward_model, policy, args.steps_per_iter)
+        reward_model = train_reward(reward_model, data_buffer, num_batches, args.pairs_in_batch) 
+        policy = train_policy(venv_fn, reward_model, policy, args.steps_per_iter, device)
         annotations = collect_annotations(env_fn, policy, num_pairs, args.clip_size)
         data_buffer.add(annotations)
         
-        reward_model.save(rm_save_path)
-        policy.save(policy_save_path)
+        print(f'Buffer size = {data_buffer.get_size()}')
+        
+        proxy_reward_function = lambda x: reward_model.rew_fn(torch.from_numpy(x)[None,:].float().to(device))
+        eval_env = Gym_procgen_continuous(env_name = args.env_name)
+        proxy_eval_env = Reward_wrapper(Gym_procgen_continuous(env_name = args.env_name), proxy_reward_function)
+
+        print(f'Proxy policy preformance = {evaluate_policy(policy, proxy_eval_env)}') 
+        print(f'True policy preformance = {evaluate_policy(policy, eval_env)}')   
+
+        # reward_model.save(rm_save_path)
+        # policy.save(policy_save_path)
+
+
+if __name__ == '__main__':
+    main()

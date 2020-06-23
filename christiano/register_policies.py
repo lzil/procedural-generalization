@@ -14,6 +14,6 @@ class DefaultPolicy(CnnPolicy):
         #                                    feature_extraction="mlp")
 
 
-## define moe
+## define more
 
 register_policy('DefaultPolicy', DefaultPolicy)

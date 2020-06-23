@@ -1,5 +1,5 @@
 from train import collect_annotations, AnnotationBuffer, RewardNet, train_reward
-from env_wrapper import gym_procgen_continuous
+from env_wrapper import Gym_procgen_continuous
 from stable_baselines import PPO2
 from stable_baselines.common.policies import MlpPolicy
 import torch
@@ -11,7 +11,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 
-env_fn = lambda: gym_procgen_continuous(env_name = 'fruitbot')
+env_fn = lambda: Gym_procgen_continuous(env_name = 'fruitbot')
 print('env ready')
 policy = PPO2(MlpPolicy, env_fn(), verbose=1)
 print('policy ready')
