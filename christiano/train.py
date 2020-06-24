@@ -74,6 +74,9 @@ class AnnotationBuffer(object):
         '''returns buffer size'''
         return self.current_size
 
+    def get_all_pairs(self):
+        return np.concatenate((self.train_data, self.val_data))
+
 class RewardNet(nn.Module):
     """Here we set up a callable reward model
 
@@ -108,6 +111,9 @@ class RewardNet(nn.Module):
             nn.Linear(64, 1)
         )
 
+        self.mean = 0
+        self.std = 0.05
+
     def forward(self, clip):
         '''
         predicts the sum of rewards of the clip
@@ -117,10 +123,21 @@ class RewardNet(nn.Module):
 
     def rew_fn(self, x):
         self.model.eval()
-        return torch.squeeze(self.model(x.permute(0,3,1,2))).detach().cpu().numpy()
+        rewards = torch.squeeze(self.model(x.permute(0,3,1,2))).detach().cpu().numpy()
+        rewards = ((rewards / self.std) - self.mean) * 0.05
+        return rewards
 
     def save(self, path):
         torch.save(self.model, path)
+
+    def set_mean_std(self, pairs, device = 'cuda:0'):
+        rewards = []
+        for clip0, clip1 , label in pairs:
+            rewards.extend(self.rew_fn(torch.from_numpy(clip0).float().to(device)))
+            rewards.extend(self.rew_fn(torch.from_numpy(clip1).float().to(device)))
+
+        self.mean = np.mean(rewards)
+        self.std = np.std(rewards)
 
 
 
@@ -302,18 +319,18 @@ def main():
 
     args = parser.parse_args()
 
-    args.init_buffer_size = 50
+    args.init_buffer_size = 500
     args.clip_size = 25
     args.env_name = 'fruitbot'
     args.num_iters = 50
-    args.steps_per_iter = 10**6
-    args.pairs_per_iter = 10**3
+    args.steps_per_iter = 10**5
+    args.pairs_per_iter = 10**6
     args.pairs_in_batch = 16
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     #initializing objects
     env_fn = lambda: Gym_procgen_continuous(env_name = args.env_name)
-    venv_fn  = lambda:  make_vec_env(env_fn, n_envs = 16)
+    venv_fn  = lambda:  make_vec_env(env_fn, monitor_dir = 'log', n_envs = 32)
 
     policy = PPO2(ImpalaPolicy, venv_fn(), verbose=1, n_steps=256, noptepochs=3, nminibatches = 8)
     reward_model = RewardNet()
@@ -330,10 +347,11 @@ def main():
     for i in range(args.num_iters):
         print(f'iter : {i+1}')
         num_pairs = int(500 / (1+i))
-        policy_save_path = 'policy' + str(i)
-        rm_save_path = 'rm' + str(i) + '.pth'
+        policy_save_path = 'log/policy' + str(i)
+        rm_save_path = 'log/rm' + str(i) + '.pth'
 
         reward_model, wd = train_reward(reward_model, data_buffer, num_batches, args.pairs_in_batch, weight_decay = wd) 
+        reward_model.set_mean_std(data_buffer.get_all_pairs())
         policy = train_policy(venv_fn, reward_model, policy, args.steps_per_iter, device)
         annotations = collect_annotations(env_fn, policy, num_pairs, args.clip_size)
         data_buffer.add(annotations)
