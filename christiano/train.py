@@ -6,7 +6,7 @@ from stable_baselines import PPO2
 from stable_baselines.common.policies import MlpPolicy, CnnPolicy
 from stable_baselines.common import make_vec_env
 from stable_baselines.common.evaluation import evaluate_policy
-
+from register_policies import ImpalaPolicy
 
 from env_wrapper import Gym_procgen_continuous, Vec_reward_wrapper, Reward_wrapper
 import numpy as np
@@ -66,6 +66,10 @@ class AnnotationBuffer(object):
     def sample_val_batch(self, n):
         return random.sample(self.val_data, n)
 
+    def val_iter(self):
+        'iterator over validation set'
+        return iter(self.val_data)
+
     def get_size(self):
         '''returns buffer size'''
         return self.current_size
@@ -108,13 +112,15 @@ class RewardNet(nn.Module):
         '''
         predicts the sum of rewards of the clip
         '''
-        self.model.train()
         x = clip.permute(0,3,1,2)
         return torch.sum(self.model(x))
 
     def rew_fn(self, x):
         self.model.eval()
         return torch.squeeze(self.model(x.permute(0,3,1,2))).detach().cpu().numpy()
+
+    def save(self, path):
+        torch.save(self.model, path)
 
 
 
@@ -133,7 +139,24 @@ def rm_loss_func(ret0, ret1, label, device = 'cuda:0'):
     return loss
 
 @timeitt
-def train_reward(reward_model, data_buffer, num_batches, batch_size, device = 'cuda:0'):
+def calc_val_loss(reward_model, data_buffer, device):
+
+    reward_model.eval()
+
+    loss = 0
+    num_pairs = 0
+    for clip0, clip1 , label in data_buffer.val_iter():
+        ret0 = reward_model(torch.from_numpy(clip0).float().to(device))
+        ret1 = reward_model(torch.from_numpy(clip1).float().to(device))
+        loss += rm_loss_func(ret0, ret1, label, device).item()
+        num_pairs += 1
+
+    av_loss = loss / num_pairs
+
+    return av_loss
+
+@timeitt
+def train_reward(reward_model, data_buffer, num_batches, batch_size, weight_decay = 0.0001, device = 'cuda:0'):
     '''
     Traines a given reward_model for num_batches from data_buffer
     Returns new reward_model
@@ -147,30 +170,45 @@ def train_reward(reward_model, data_buffer, num_batches, batch_size, device = 'c
     '''
 
     reward_model.to(device)
-    optimizer = optim.Adam(reward_model.parameters(), lr= 0.0003, weight_decay = 0.0001)
+    optimizer = optim.Adam(reward_model.parameters(), lr= 0.0003, weight_decay = weight_decay)
     
     #TODO Adaptive L2 reg
     # for g in optimizer.param_groups: 
-    #     g['weight_decay'] = g['weight_decay'] * 1.0001
-
+    #     g['weight_decay'] = g['weight_decay'] * 1.01
+    losses = []
     for batch_i in range(num_batches):
-
         annotations = data_buffer.sample_batch(batch_size)
         loss = 0
         optimizer.zero_grad()
-
+        reward_model.train()
         for clip0, clip1 , label in annotations:
             ret0 = reward_model(torch.from_numpy(clip0).float().to(device))
             ret1 = reward_model(torch.from_numpy(clip1).float().to(device))
             loss += rm_loss_func(ret0, ret1, label, device)
         
         loss = loss / batch_size
+        losses.append(loss.item())
+
         if batch_i % 100 == 0:
-            print(f'batch : {batch_i}, loss : {loss.item():6.2f}')
+            val_loss = calc_val_loss(reward_model, data_buffer, device) 
+            av_loss = np.mean(losses[-100:])
+            #Adaptive L2 reg
+            if val_loss > 1.5 * av_loss:
+                for g in optimizer.param_groups: 
+                    g['weight_decay'] = g['weight_decay'] * 1.1
+                    weight_decay = g['weight_decay']
+            elif val_loss < 1.1 * av_loss:
+                 for g in optimizer.param_groups:
+                    g['weight_decay'] = g['weight_decay'] / 1.1   
+                    weight_decay = g['weight_decay']
+
+            print(f'batch : {batch_i}, loss : {av_loss:6.2f}, val loss: {val_loss:6.2f}, L2 : {weight_decay:8.6f}')
+            
         loss.backward()
         optimizer.step()
 
-    return reward_model
+
+    return reward_model, weight_decay
 
 
     
@@ -188,7 +226,7 @@ def train_policy(venv_fn, reward_model, policy, num_steps, device):
     proxy_reward_function = lambda x: reward_model.rew_fn(torch.from_numpy(x).float().to(device))
     proxy_reward_venv = Vec_reward_wrapper(venv_fn(), proxy_reward_function)
 
-    policy = PPO2(CnnPolicy, proxy_reward_venv, verbose=1)
+    policy.set_env(proxy_reward_venv)
     policy.learn(num_steps)
 
     return policy
@@ -264,20 +302,20 @@ def main():
 
     args = parser.parse_args()
 
-    args.init_buffer_size = 500
+    args.init_buffer_size = 50
     args.clip_size = 25
     args.env_name = 'fruitbot'
-    args.num_iters = 10
+    args.num_iters = 50
     args.steps_per_iter = 10**6
-    args.pairs_per_iter = 10**5
+    args.pairs_per_iter = 10**3
     args.pairs_in_batch = 16
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     #initializing objects
     env_fn = lambda: Gym_procgen_continuous(env_name = args.env_name)
-    venv_fn  = lambda:  make_vec_env(env_fn, n_envs = 64)
+    venv_fn  = lambda:  make_vec_env(env_fn, n_envs = 16)
 
-    policy = PPO2(CnnPolicy, venv_fn(), verbose=1)
+    policy = PPO2(ImpalaPolicy, venv_fn(), verbose=1, n_steps=256, noptepochs=3, nminibatches = 8)
     reward_model = RewardNet()
     data_buffer = AnnotationBuffer()
 
@@ -288,13 +326,14 @@ def main():
 
     num_batches = int(args.pairs_per_iter / args.pairs_in_batch)
 
+    wd = 0.0001
     for i in range(args.num_iters):
         print(f'iter : {i+1}')
         num_pairs = int(500 / (1+i))
         policy_save_path = 'policy' + str(i)
-        rm_save_path = 'rm' + str(i)
+        rm_save_path = 'rm' + str(i) + '.pth'
 
-        reward_model = train_reward(reward_model, data_buffer, num_batches, args.pairs_in_batch) 
+        reward_model, wd = train_reward(reward_model, data_buffer, num_batches, args.pairs_in_batch, weight_decay = wd) 
         policy = train_policy(venv_fn, reward_model, policy, args.steps_per_iter, device)
         annotations = collect_annotations(env_fn, policy, num_pairs, args.clip_size)
         data_buffer.add(annotations)
@@ -308,8 +347,8 @@ def main():
         print(f'Proxy policy preformance = {evaluate_policy(policy, proxy_eval_env)}') 
         print(f'True policy preformance = {evaluate_policy(policy, eval_env)}')   
 
-        # reward_model.save(rm_save_path)
-        # policy.save(policy_save_path)
+        reward_model.save(rm_save_path)
+        policy.save(policy_save_path)
 
 
 if __name__ == '__main__':
