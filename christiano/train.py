@@ -323,13 +323,13 @@ def main():
     args.clip_size = 25
     args.env_name = 'fruitbot'
     args.num_iters = 50
-    args.steps_per_iter = 10**5
-    args.pairs_per_iter = 10**6
+    args.steps_per_iter = 10**6
+    args.pairs_per_iter = 10**5
     args.pairs_in_batch = 16
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     #initializing objects
-    env_fn = lambda: Gym_procgen_continuous(env_name = args.env_name)
+    env_fn = lambda: Gym_procgen_continuous(env_name = args.env_name, distribution_mode = 'easy')
     venv_fn  = lambda:  make_vec_env(env_fn, monitor_dir = 'log', n_envs = 32)
 
     policy = PPO2(ImpalaPolicy, venv_fn(), verbose=1, n_steps=256, noptepochs=3, nminibatches = 8)
