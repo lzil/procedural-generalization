@@ -6,15 +6,15 @@ from stable_baselines import PPO2
 from stable_baselines.common.policies import MlpPolicy, CnnPolicy
 from stable_baselines.common import make_vec_env
 from stable_baselines.common.evaluation import evaluate_policy
-from register_policies import ImpalaPolicy
 
+from register_policies import ImpalaPolicy
 from env_wrapper import Gym_procgen_continuous, Vec_reward_wrapper, Reward_wrapper
 import numpy as np
 import random
-import argparse
+import argparse, pickle
 
 import tensorflow as tf
-import os, time
+import os, time, datetime
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -83,7 +83,7 @@ class RewardNet(nn.Module):
     Should have batch normalizatoin and dropout on conv layers
     
     """
-    def __init__(self):
+    def __init__(self, l2 = 0.01):
         super().__init__()
 
         self.model = nn.Sequential(
@@ -113,6 +113,7 @@ class RewardNet(nn.Module):
 
         self.mean = 0
         self.std = 0.05
+        self.l2 = l2
 
     def forward(self, clip):
         '''
@@ -173,7 +174,7 @@ def calc_val_loss(reward_model, data_buffer, device):
     return av_loss
 
 @timeitt
-def train_reward(reward_model, data_buffer, num_batches, batch_size, weight_decay = 0.0001, device = 'cuda:0'):
+def train_reward(reward_model, data_buffer, num_batches, batch_size, device = 'cuda:0'):
     '''
     Traines a given reward_model for num_batches from data_buffer
     Returns new reward_model
@@ -187,11 +188,9 @@ def train_reward(reward_model, data_buffer, num_batches, batch_size, weight_deca
     '''
 
     reward_model.to(device)
+    weight_decay = reward_model.l2
     optimizer = optim.Adam(reward_model.parameters(), lr= 0.0003, weight_decay = weight_decay)
     
-    #TODO Adaptive L2 reg
-    # for g in optimizer.param_groups: 
-    #     g['weight_decay'] = g['weight_decay'] * 1.01
     losses = []
     for batch_i in range(num_batches):
         annotations = data_buffer.sample_batch(batch_size)
@@ -224,9 +223,8 @@ def train_reward(reward_model, data_buffer, num_batches, batch_size, weight_deca
         loss.backward()
         optimizer.step()
 
-
-    return reward_model, weight_decay
-
+    reward_model.l2 = weight_decay    
+    return reward_model
 
     
 
@@ -296,46 +294,95 @@ def collect_annotations(env_fn, policy, num_pairs, clip_size):
 
     return data
 
+def save_state(run_dir, i, reward_model, policy, data_buffer):
+
+    save_dir =os.path.join(run_dir, "saved_states", str(i))
+    os.makedirs(save_dir, exist_ok=True)
+
+    policy_save_path = os.path.join(save_dir, 'policy')
+    rm_save_path = os.path.join(save_dir, 'rm.pth')
+    data_buff_save_path = os.path.join(save_dir, 'data_buff.pth')
+
+    with open(rm_save_path, 'wb') as f:
+        pickle.dump(reward_model, f)
+
+    with open(data_buff_save_path, 'wb') as f:
+        pickle.dump(data_buffer, f)  
+
+    policy.save(policy_save_path)
+
+def load_state(run_dir):
+
+    state_dir = os.path.join(run_dir, "saved_states")
+    i = max([int(f.name) for f in os.scandir(state_dir) if f.is_dir()])
+    load_dir =os.path.join(state_dir, str(i))
+
+    policy_load_path = os.path.join(load_dir, 'policy')
+    rm_load_path = os.path.join(load_dir, 'rm.pth')
+    data_buff_load_path = os.path.join(load_dir, 'data_buff.pth')
+
+
+    reward_model = pickle.load(open(rm_load_path, 'rb'))
+    data_buffer = pickle.load(open(data_buff_load_path, 'rb'))
+    policy = PPO2.load(load_path = policy_load_path,  verbose=1, n_steps=256, noptepochs=3, nminibatches = 8)
+
+    return reward_model, policy, data_buffer
 
 def main():
     ##setup args
     parser = argparse.ArgumentParser(description='Procgen training, with a revised reward model')
     parser.add_argument('-c', '--config', type=str, default=None)
 
-    parser.add_argument('--env_name', type=str, default='starpilot')
+    parser.add_argument('--env_name', type=str, default='fruitbot')
     parser.add_argument('--distribution_mode', type=str, default='easy', choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=0)
     parser.add_argument('--start_level', type=int, default=0)
-    parser.add_argument('--test_worker_interval', type=int, default=0)
-    parser.add_argument('--load_path', type=str, default=None)
-    parser.add_argument('--log_dir', type=str, default='trex/policy_logs')
+    parser.add_argument('--log_dir', type=str, default='logs')
     parser.add_argument('--log_name', type=str, default='')
-    parser.add_argument('--reward_model_path', type = str, help="name and location for learned model params, e.g. ./learned_models/breakout.params")
 
-    # logs every num_envs * nsteps
-    parser.add_argument('--log_interval', type=int, default=5)
-    parser.add_argument('--save_interval', type=int, default=20)
+    parser.add_argument('--resume_training', action='store_true')
+
+    parser.add_argument('--init_buffer_size', type=int, default=500)
+    parser.add_argument('--clip_size', type=int, default=25)
+    parser.add_argument('--num_iters', type=int, default=50)
+    parser.add_argument('--steps_per_iter', type=int, default=10**6)
+    parser.add_argument('--pairs_per_iter', type=int, default=10**5)
+    parser.add_argument('--pairs_in_batch', type=int, default=16)
+    parser.add_argument('--l2', type=int, default=0.01)
+
 
 
     args = parser.parse_args()
 
-    args.init_buffer_size = 500
-    args.clip_size = 25
-    args.env_name = 'fruitbot'
-    args.num_iters = 50
-    args.steps_per_iter = 10**6
-    args.pairs_per_iter = 10**5
-    args.pairs_in_batch = 16
-
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(f'\n Using {device} for training')
+
+    #Setting up directory for logs
+    if not args.log_name:
+        args.log_name = datetime.datetime.now().strftime('%Y_%M_%d_%H_%I_%S')
+
+    run_dir = os.path.join(args.log_dir, args.log_name)
+    os.makedirs(run_dir, exist_ok=True)
+    monitor_dir = os.path.join(run_dir ,'monitor')
+    os.makedirs(monitor_dir, exist_ok=True)
+
+    
+
     #initializing objects
-    env_fn = lambda: Gym_procgen_continuous(env_name = args.env_name, distribution_mode = 'easy')
-    venv_fn  = lambda:  make_vec_env(env_fn, monitor_dir = 'log', n_envs = 32)
+    env_fn = lambda: Gym_procgen_continuous(env_name = args.env_name, distribution_mode = args.distribution_mode)
+    venv_fn  = lambda:  make_vec_env(env_fn, monitor_dir = monitor_dir, n_envs = 32)
+
 
     policy = PPO2(ImpalaPolicy, venv_fn(), verbose=1, n_steps=256, noptepochs=3, nminibatches = 8)
     reward_model = RewardNet()
     data_buffer = AnnotationBuffer()
 
+    if args.resume_training:
+        reward_model, policy, data_buffer = load_state(run_dir)
+    else:
+        policy = PPO2(ImpalaPolicy, venv_fn(), verbose=1, n_steps=256, noptepochs=3, nminibatches = 8)
+        reward_model = RewardNet()
+        data_buffer = AnnotationBuffer()       
 
     initial_data = collect_annotations(env_fn, policy, args.init_buffer_size, args.clip_size)
     data_buffer.add(initial_data)
@@ -343,14 +390,12 @@ def main():
 
     num_batches = int(args.pairs_per_iter / args.pairs_in_batch)
 
-    wd = 0.0001
     for i in range(args.num_iters):
         print(f'iter : {i+1}')
-        num_pairs = int(500 / (1+i))
-        policy_save_path = 'log/policy' + str(i)
-        rm_save_path = 'log/rm' + str(i) + '.pth'
+        num_pairs = int(args.init_buffer_size / (1+i))
+        
 
-        reward_model, wd = train_reward(reward_model, data_buffer, num_batches, args.pairs_in_batch, weight_decay = wd) 
+        reward_model = train_reward(reward_model, data_buffer, num_batches, args.pairs_in_batch) 
         reward_model.set_mean_std(data_buffer.get_all_pairs())
         policy = train_policy(venv_fn, reward_model, policy, args.steps_per_iter, device)
         annotations = collect_annotations(env_fn, policy, num_pairs, args.clip_size)
@@ -359,14 +404,15 @@ def main():
         print(f'Buffer size = {data_buffer.get_size()}')
         
         proxy_reward_function = lambda x: reward_model.rew_fn(torch.from_numpy(x)[None,:].float().to(device))
-        eval_env = Gym_procgen_continuous(env_name = args.env_name)
-        proxy_eval_env = Reward_wrapper(Gym_procgen_continuous(env_name = args.env_name), proxy_reward_function)
+        eval_env = Gym_procgen_continuous(env_name = args.env_name, distribution_mode = args.distribution_mode)
+        proxy_eval_env = Reward_wrapper(Gym_procgen_continuous(env_name = args.env_name, distribution_mode = args.distribution_mode), proxy_reward_function)
 
         print(f'Proxy policy preformance = {evaluate_policy(policy, proxy_eval_env)}') 
-        print(f'True policy preformance = {evaluate_policy(policy, eval_env)}')   
+        print(f'True policy preformance = {evaluate_policy(policy, eval_env, render = True)}')   
 
-        reward_model.save(rm_save_path)
-        policy.save(policy_save_path)
+        save_state(run_dir, i, reward_model, policy, data_buffer)
+        os.rename(monitor_dir, monitor_dir + '_' + str(i))        
+
 
 
 if __name__ == '__main__':
