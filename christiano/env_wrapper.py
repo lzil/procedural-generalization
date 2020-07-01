@@ -26,6 +26,7 @@ class Gym_procgen_continuous(gym.Wrapper):
     """
     # Reset the counter
     self.current_step = 0
+    self.env.close()
     self.env = self.env_fn()
     return self.env.reset()
 
@@ -41,7 +42,7 @@ class Gym_procgen_continuous(gym.Wrapper):
     if done:
         reward = -10
         done = False
-
+        self.env.reset()
     # Overwrite the done signal when 
     if self.current_step >= self.max_steps:
       done = True

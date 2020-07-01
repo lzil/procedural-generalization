@@ -6,6 +6,7 @@ from stable_baselines import PPO2
 from stable_baselines.common.policies import MlpPolicy, CnnPolicy
 from stable_baselines.common import make_vec_env
 from stable_baselines.common.evaluation import evaluate_policy
+from stable_baselines.common.vec_env import VecVideoRecorder, DummyVecEnv
 
 from register_policies import ImpalaPolicy
 from env_wrapper import Gym_procgen_continuous, Vec_reward_wrapper, Reward_wrapper
@@ -31,7 +32,7 @@ def timeitt(method):
             print ('time spent by %r  %2.2f ms' % \
                   (method.__name__, (te - ts) * 1000))
         return result
-    return timed
+    return timed 
 
 class AnnotationBuffer(object):
     """Buffer of annotated pairs of clips
@@ -288,7 +289,8 @@ def collect_annotations(env_fn, policy, num_pairs, clip_size):
         elif clip0['return'] < clip1['return']:
             label = 1.0 
         elif clip0['return'] == clip1['return']:
-            label = 0.5
+            continue
+            #label = 0.5
 
         data.append(Annotation(np.array(clip0['observations']), np.array(clip1['observations']), label))
 
@@ -326,7 +328,7 @@ def load_state(run_dir):
     data_buffer = pickle.load(open(data_buff_load_path, 'rb'))
     policy = PPO2.load(load_path = policy_load_path,  verbose=1, n_steps=256, noptepochs=3, nminibatches = 8)
 
-    return reward_model, policy, data_buffer
+    return reward_model, policy, data_buffer, i + 1
 
 def main():
     ##setup args
@@ -348,8 +350,7 @@ def main():
     parser.add_argument('--steps_per_iter', type=int, default=10**6)
     parser.add_argument('--pairs_per_iter', type=int, default=10**5)
     parser.add_argument('--pairs_in_batch', type=int, default=16)
-    parser.add_argument('--l2', type=int, default=0.01)
-
+    parser.add_argument('--l2', type=float, default=0.01)
 
 
     args = parser.parse_args()
@@ -365,11 +366,13 @@ def main():
     os.makedirs(run_dir, exist_ok=True)
     monitor_dir = os.path.join(run_dir ,'monitor')
     os.makedirs(monitor_dir, exist_ok=True)
+    video_dir = os.path.join(run_dir ,'video')
+    os.makedirs(video_dir, exist_ok=True)
 
     
 
     #initializing objects
-    env_fn = lambda: Gym_procgen_continuous(env_name = args.env_name, distribution_mode = args.distribution_mode)
+    env_fn = lambda: Gym_procgen_continuous(env_name = args.env_name, distribution_mode = args.distribution_mode, num_levels = args.num_levels, start_level = args.start_level)
     venv_fn  = lambda:  make_vec_env(env_fn, monitor_dir = monitor_dir, n_envs = 32)
 
 
@@ -378,37 +381,39 @@ def main():
     data_buffer = AnnotationBuffer()
 
     if args.resume_training:
-        reward_model, policy, data_buffer = load_state(run_dir)
+        reward_model, policy, data_buffer, i_num = load_state(run_dir)
     else:
+        i_num = 0
         policy = PPO2(ImpalaPolicy, venv_fn(), verbose=1, n_steps=256, noptepochs=3, nminibatches = 8)
         reward_model = RewardNet()
         data_buffer = AnnotationBuffer()       
 
-    initial_data = collect_annotations(env_fn, policy, args.init_buffer_size, args.clip_size)
-    data_buffer.add(initial_data)
-    print(f'Buffer size = {data_buffer.get_size()}')   
 
     num_batches = int(args.pairs_per_iter / args.pairs_in_batch)
 
-    for i in range(args.num_iters):
-        print(f'iter : {i+1}')
+    for i in range(i_num, args.num_iters + i_num):
+        print(f'iter : {i}')
         num_pairs = int(args.init_buffer_size / (1+i))
         
-
+        annotations = collect_annotations(env_fn, policy, num_pairs, args.clip_size)
+        data_buffer.add(annotations)
+        print(f'Buffer size = {data_buffer.get_size()}')
+        
         reward_model = train_reward(reward_model, data_buffer, num_batches, args.pairs_in_batch) 
         reward_model.set_mean_std(data_buffer.get_all_pairs())
         policy = train_policy(venv_fn, reward_model, policy, args.steps_per_iter, device)
-        annotations = collect_annotations(env_fn, policy, num_pairs, args.clip_size)
-        data_buffer.add(annotations)
-        
-        print(f'Buffer size = {data_buffer.get_size()}')
-        
-        proxy_reward_function = lambda x: reward_model.rew_fn(torch.from_numpy(x)[None,:].float().to(device))
-        eval_env = Gym_procgen_continuous(env_name = args.env_name, distribution_mode = args.distribution_mode)
-        proxy_eval_env = Reward_wrapper(Gym_procgen_continuous(env_name = args.env_name, distribution_mode = args.distribution_mode), proxy_reward_function)
 
+
+        eval_env = VecVideoRecorder(DummyVecEnv([env_fn]), video_dir ,
+                       record_video_trigger=lambda x: x == 0, video_length=1000,
+                       name_prefix="on_iter_{}".format(i))
+
+        proxy_reward_function = lambda x: reward_model.rew_fn(torch.from_numpy(x)[None,:].float().to(device))
+        proxy_eval_env = Reward_wrapper(env_fn(), proxy_reward_function)
+
+        print(f'True policy preformance = {evaluate_policy(policy, eval_env)}') 
         print(f'Proxy policy preformance = {evaluate_policy(policy, proxy_eval_env)}') 
-        print(f'True policy preformance = {evaluate_policy(policy, eval_env, render = True)}')   
+          
 
         save_state(run_dir, i, reward_model, policy, data_buffer)
         os.rename(monitor_dir, monitor_dir + '_' + str(i))        
