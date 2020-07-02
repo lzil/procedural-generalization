@@ -9,6 +9,8 @@ from stable_baselines.common.evaluation import evaluate_policy
 from stable_baselines.common.vec_env import VecVideoRecorder, DummyVecEnv
 
 from register_policies import ImpalaPolicy
+from utils import *
+
 from env_wrapper import Gym_procgen_continuous, Vec_reward_wrapper, Reward_wrapper
 import numpy as np
 import random
@@ -19,20 +21,6 @@ import os, time, datetime
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-
-def timeitt(method):
-    def timed(*args, **kw):
-        ts = time.time()
-        result = method(*args, **kw)
-        te = time.time()
-        if 'log_time' in kw:
-            name = kw.get('log_name', method.__name__.upper())
-            kw['log_time'][name] = int((te - ts) * 1000)
-        else:
-            print ('time spent by %r  %2.2f ms' % \
-                  (method.__name__, (te - ts) * 1000))
-        return result
-    return timed 
 
 class AnnotationBuffer(object):
     """Buffer of annotated pairs of clips
@@ -175,7 +163,7 @@ def calc_val_loss(reward_model, data_buffer, device):
     return av_loss
 
 @timeitt
-def train_reward(reward_model, data_buffer, num_batches, batch_size, device = 'cuda:0'):
+def train_reward(reward_model, data_buffer, num_samples, batch_size, device = 'cuda:0'):
     '''
     Traines a given reward_model for num_batches from data_buffer
     Returns new reward_model
@@ -187,6 +175,7 @@ def train_reward(reward_model, data_buffer, num_batches, batch_size, device = 'c
         (Ibarz et al. page 15)
         
     '''
+    num_batches = int(num_samples / batch_size)
 
     reward_model.to(device)
     weight_decay = reward_model.l2
@@ -289,6 +278,7 @@ def collect_annotations(env_fn, policy, num_pairs, clip_size):
         elif clip0['return'] < clip1['return']:
             label = 1.0 
         elif clip0['return'] == clip1['return']:
+            # skipping clips with same rewards for now
             continue
             #label = 0.5
 
@@ -296,39 +286,6 @@ def collect_annotations(env_fn, policy, num_pairs, clip_size):
 
     return data
 
-def save_state(run_dir, i, reward_model, policy, data_buffer):
-
-    save_dir =os.path.join(run_dir, "saved_states", str(i))
-    os.makedirs(save_dir, exist_ok=True)
-
-    policy_save_path = os.path.join(save_dir, 'policy')
-    rm_save_path = os.path.join(save_dir, 'rm.pth')
-    data_buff_save_path = os.path.join(save_dir, 'data_buff.pth')
-
-    with open(rm_save_path, 'wb') as f:
-        pickle.dump(reward_model, f)
-
-    with open(data_buff_save_path, 'wb') as f:
-        pickle.dump(data_buffer, f)  
-
-    policy.save(policy_save_path)
-
-def load_state(run_dir):
-
-    state_dir = os.path.join(run_dir, "saved_states")
-    i = max([int(f.name) for f in os.scandir(state_dir) if f.is_dir()])
-    load_dir =os.path.join(state_dir, str(i))
-
-    policy_load_path = os.path.join(load_dir, 'policy')
-    rm_load_path = os.path.join(load_dir, 'rm.pth')
-    data_buff_load_path = os.path.join(load_dir, 'data_buff.pth')
-
-
-    reward_model = pickle.load(open(rm_load_path, 'rb'))
-    data_buffer = pickle.load(open(data_buff_load_path, 'rb'))
-    policy = PPO2.load(load_path = policy_load_path,  verbose=1, n_steps=256, noptepochs=3, nminibatches = 8)
-
-    return reward_model, policy, data_buffer, i + 1
 
 def main():
     ##setup args
@@ -355,41 +312,38 @@ def main():
 
     args = parser.parse_args()
 
+    args.ppo_kwargs = dict(verbose=1, n_steps=256, noptepochs=3, nminibatches = 8)
+
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(f'\n Using {device} for training')
 
-    #Setting up directory for logs
-    if not args.log_name:
-        args.log_name = datetime.datetime.now().strftime('%Y_%M_%d_%H_%I_%S')
 
-    run_dir = os.path.join(args.log_dir, args.log_name)
-    os.makedirs(run_dir, exist_ok=True)
-    monitor_dir = os.path.join(run_dir ,'monitor')
-    os.makedirs(monitor_dir, exist_ok=True)
-    video_dir = os.path.join(run_dir ,'video')
-    os.makedirs(video_dir, exist_ok=True)
-
-    
-
-    #initializing objects
-    env_fn = lambda: Gym_procgen_continuous(env_name = args.env_name, distribution_mode = args.distribution_mode, num_levels = args.num_levels, start_level = args.start_level)
-    venv_fn  = lambda:  make_vec_env(env_fn, monitor_dir = monitor_dir, n_envs = 32)
-
-
-    policy = PPO2(ImpalaPolicy, venv_fn(), verbose=1, n_steps=256, noptepochs=3, nminibatches = 8)
-    reward_model = RewardNet()
-    data_buffer = AnnotationBuffer()
+    run_dir, monitor_dir, video_dir = setup_logging(args)
 
     if args.resume_training:
         reward_model, policy, data_buffer, i_num = load_state(run_dir)
-    else:
+        args = load_args(args)
+
+    #initializing objects
+    env_fn = lambda: Gym_procgen_continuous(
+        env_name = args.env_name, 
+        distribution_mode = args.distribution_mode, 
+        num_levels = args.num_levels, 
+        start_level = args.start_level
+        )
+    venv_fn  = lambda:  make_vec_env(env_fn, monitor_dir = monitor_dir, n_envs = 32)
+
+
+    #in case this is a fresh run 
+    if not args.resume_training:
         i_num = 0
-        policy = PPO2(ImpalaPolicy, venv_fn(), verbose=1, n_steps=256, noptepochs=3, nminibatches = 8)
+        policy = PPO2(ImpalaPolicy, venv_fn(), **args.ppo_kwargs)
         reward_model = RewardNet()
-        data_buffer = AnnotationBuffer()       
+        data_buffer = AnnotationBuffer()
+        store_args(args, run_dir)   
 
 
-    num_batches = int(args.pairs_per_iter / args.pairs_in_batch)
+    
 
     for i in range(i_num, args.num_iters + i_num):
         print(f'iter : {i}')
@@ -399,7 +353,7 @@ def main():
         data_buffer.add(annotations)
         print(f'Buffer size = {data_buffer.get_size()}')
         
-        reward_model = train_reward(reward_model, data_buffer, num_batches, args.pairs_in_batch) 
+        reward_model = train_reward(reward_model, data_buffer, args.pairs_per_iter, args.pairs_in_batch) 
         reward_model.set_mean_std(data_buffer.get_all_pairs())
         policy = train_policy(venv_fn, reward_model, policy, args.steps_per_iter, device)
 
@@ -411,8 +365,8 @@ def main():
         proxy_reward_function = lambda x: reward_model.rew_fn(torch.from_numpy(x)[None,:].float().to(device))
         proxy_eval_env = Reward_wrapper(env_fn(), proxy_reward_function)
 
-        print(f'True policy preformance = {evaluate_policy(policy, eval_env)}') 
-        print(f'Proxy policy preformance = {evaluate_policy(policy, proxy_eval_env)}') 
+        print(f'True policy preformance = {evaluate_policy(policy, eval_env, n_eval_episodes=1)}') 
+        print(f'Proxy policy preformance = {evaluate_policy(policy, proxy_eval_env, n_eval_episodes=1)}') 
           
 
         save_state(run_dir, i, reward_model, policy, data_buffer)
