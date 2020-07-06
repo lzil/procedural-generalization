@@ -10,8 +10,8 @@ from stable_baselines.common.vec_env import VecVideoRecorder, DummyVecEnv
 
 from register_policies import ImpalaPolicy
 from utils import *
+from env_wrapper import *
 
-from env_wrapper import Gym_procgen_continuous, Vec_reward_wrapper, Reward_wrapper
 import numpy as np
 import random
 import argparse, pickle
@@ -72,33 +72,63 @@ class RewardNet(nn.Module):
     Should have batch normalizatoin and dropout on conv layers
     
     """
-    def __init__(self, l2 = 0.01):
+    def __init__(self, l2 = 0.01, env_type = 'procgen'):
         super().__init__()
+        self.env_type = env_type
+        if env_type == 'procgen':
+            self.model = nn.Sequential(
+                #conv1
+                nn.Dropout2d(p=0.2),
+                nn.Conv2d(3, 16, 3, stride=1),
+                nn.MaxPool2d(4, stride=2),
+                nn.LeakyReLU(),
+                nn.BatchNorm2d(16),
+                #conv2
+                nn.Dropout2d(p=0.2),
+                nn.Conv2d(16, 16, 3, stride=1),
+                nn.MaxPool2d(4, stride=2),
+                nn.LeakyReLU(),
+                nn.BatchNorm2d(16),
+                #conv3
+                nn.Dropout2d(p=0.2),
+                nn.Conv2d(16, 16, 3, stride=1),
+                nn.LeakyReLU(),
+                nn.BatchNorm2d(16),
+                # 2 layer mlp
+                nn.Flatten(),
+                nn.Linear(11*11*16, 64),
+                nn.LeakyReLU(),
+                nn.Linear(64, 1)
+            )
+        elif env_type == 'atari':
+            self.model = nn.Sequential(
+                #conv1
+                nn.Dropout2d(p=0.2),
+                nn.Conv2d(4, 16, 7, stride=3),
+                nn.LeakyReLU(),
+                nn.BatchNorm2d(16),
+                #conv2
+                nn.Dropout2d(p=0.2),
+                nn.Conv2d(16, 16, 5, stride=2),
+                nn.LeakyReLU(),
+                nn.BatchNorm2d(16),
+                #conv3
+                nn.Dropout2d(p=0.2),
+                nn.Conv2d(16, 16, 3, stride=1),
+                nn.LeakyReLU(),
+                nn.BatchNorm2d(16),
+                #conv4
+                nn.Dropout2d(p=0.2),
+                nn.Conv2d(16, 16, 3, stride=1),
+                nn.LeakyReLU(),
+                nn.BatchNorm2d(16),
+                # 2 layer mlp
+                nn.Flatten(),
+                nn.Linear(7*7*16, 64),
+                nn.LeakyReLU(),
+                nn.Linear(64, 1)
+            )
 
-        self.model = nn.Sequential(
-            #conv1
-            nn.Dropout2d(p=0.2),
-            nn.Conv2d(3, 16, 3, stride=1),
-            nn.MaxPool2d(4, stride=2),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(16),
-            #conv2
-            nn.Dropout2d(p=0.2),
-            nn.Conv2d(16, 16, 3, stride=1),
-            nn.MaxPool2d(4, stride=2),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(16),
-            #conv3
-            nn.Dropout2d(p=0.2),
-            nn.Conv2d(16, 16, 3, stride=1),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(16),
-            # 2 layer mlp
-            nn.Flatten(),
-            nn.Linear(11*11*16, 64),
-            nn.LeakyReLU(),
-            nn.Linear(64, 1)
-        )
 
         self.mean = 0
         self.std = 0.05
@@ -108,12 +138,15 @@ class RewardNet(nn.Module):
         '''
         predicts the sum of rewards of the clip
         '''
-        x = clip.permute(0,3,1,2)
-        return torch.sum(self.model(x))
+        if self.env_type == 'procgen':
+            clip = clip.permute(0,3,1,2)
+        return torch.sum(self.model(clip))
 
     def rew_fn(self, x):
         self.model.eval()
-        rewards = torch.squeeze(self.model(x.permute(0,3,1,2))).detach().cpu().numpy()
+        if self.env_type == 'procgen':
+            x = x.permute(0,3,1,2)
+        rewards = torch.squeeze(self.model(x)).detach().cpu().numpy()
         rewards = ((rewards / self.std) - self.mean) * 0.05
         return rewards
 
@@ -142,6 +175,8 @@ def rm_loss_func(ret0, ret1, label, device = 'cuda:0'):
     #compute cross entropy given the label
     target = torch.tensor([1-label, label]).to(device)
     loss = - torch.sum(log_preds * target)
+
+
 
     return loss
 
@@ -289,12 +324,12 @@ def collect_annotations(env_fn, policy, num_pairs, clip_size):
 
 def main():
     ##setup args
-    parser = argparse.ArgumentParser(description='Procgen training, with a revised reward model')
-    parser.add_argument('-c', '--config', type=str, default=None)
+    parser = argparse.ArgumentParser(description='Reward learning from preferences')
 
+    parser.add_argument('--env_type', type=str, default='procgen')
     parser.add_argument('--env_name', type=str, default='fruitbot')
     parser.add_argument('--distribution_mode', type=str, default='easy', choices=["easy", "hard", "exploration", "memory", "extreme"])
-    parser.add_argument('--num_levels', type=int, default=0)
+    parser.add_argument('--num_levels', type=int, default=1)
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--log_dir', type=str, default='logs')
     parser.add_argument('--log_name', type=str, default='')
@@ -325,12 +360,16 @@ def main():
         args = load_args(args)
 
     #initializing objects
-    env_fn = lambda: Gym_procgen_continuous(
-        env_name = args.env_name, 
-        distribution_mode = args.distribution_mode, 
-        num_levels = args.num_levels, 
-        start_level = args.start_level
-        )
+    if args.env_type == 'procgen':
+        env_fn = lambda: Gym_procgen_continuous(
+            env_name = args.env_name, 
+            distribution_mode = args.distribution_mode, 
+            num_levels = args.num_levels, 
+            start_level = args.start_level
+            )
+    elif args.env_type == 'atari':
+        env_fn = lambda: Atari_continuous(args.env_name)
+
     venv_fn  = lambda:  make_vec_env(env_fn, monitor_dir = monitor_dir, n_envs = 32)
 
 
@@ -338,7 +377,7 @@ def main():
     if not args.resume_training:
         i_num = 0
         policy = PPO2(ImpalaPolicy, venv_fn(), **args.ppo_kwargs)
-        reward_model = RewardNet()
+        reward_model = RewardNet(env_type = args.env_type)
         data_buffer = AnnotationBuffer()
         store_args(args, run_dir)   
 
@@ -346,7 +385,7 @@ def main():
     
 
     for i in range(i_num, args.num_iters + i_num):
-        print(f'iter : {i}')
+        print(f'================== iter : {i} ====================')
         num_pairs = int(args.init_buffer_size / (1+i))
         
         annotations = collect_annotations(env_fn, policy, num_pairs, args.clip_size)
@@ -359,7 +398,7 @@ def main():
 
 
         eval_env = VecVideoRecorder(DummyVecEnv([env_fn]), video_dir ,
-                       record_video_trigger=lambda x: x == 0, video_length=1000,
+                       record_video_trigger=lambda x: x == 0, video_length=10000,
                        name_prefix="on_iter_{}".format(i))
 
         proxy_reward_function = lambda x: reward_model.rew_fn(torch.from_numpy(x)[None,:].float().to(device))

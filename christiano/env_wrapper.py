@@ -7,7 +7,7 @@ class Gym_procgen_continuous(gym.Wrapper):
   :param env_name: (str) name of the Procgen environment that will be wrapped
   :param max_steps: (int) Max number of steps per episode
   """
-  def __init__(self, env_name, max_steps=1000, **kwargs):
+  def __init__(self, env_name, max_steps=10000, **kwargs):
     kwargs['use_sequential_levels'] = True
     self.env_fn = lambda : gym.make("procgen:procgen-"+ str(env_name) +"-v0", **kwargs) 
     env = self.env_fn()
@@ -48,6 +48,66 @@ class Gym_procgen_continuous(gym.Wrapper):
       done = True
       # Update the info dict to signal that the limit was exceeded
       info['time_limit_reached'] = True
+    return obs, np.float(reward), np.bool(done), info
+
+
+from gym.wrappers import AtariPreprocessing, FrameStack
+
+
+class Atari_continuous(gym.Wrapper):
+  """
+  :param env_name: (str) name of the Procgen environment that will be wrapped
+  :param max_steps: (int) Max number of steps per episode
+  """
+  def __init__(self, env_name, max_steps=10000, **kwargs):
+    self.env_fn = lambda : FrameStack(AtariPreprocessing(
+            env = gym.make(str(env_name) +"NoFrameskip-v4"),
+            terminal_on_life_loss = True, frame_skip = 1, scale_obs = True), num_stack = 4)
+
+    env = self.env_fn()
+    # Call the parent constructor, so we can access self.env later
+    super(Atari_continuous, self).__init__(env)
+    self.max_steps = max_steps
+    # Counter of steps per episode
+    self.current_step = 0
+  
+  def set_maxsteps(self, max_steps):
+    self.max_steps = max_steps
+
+  def reset(self):
+    """
+    Reset the environment 
+    """
+    # Reset the counter
+    self.current_step = 0
+    self.env.close()
+    self.env = self.env_fn()
+    return self.env.reset()
+
+  def step(self, action):
+    """
+    :param action: ([float] or int) Action taken by the agent
+    :return: (np.ndarray, float, bool, dict) observation, reward, is the episode over?, additional informations
+    """
+    #TODO remove score from observation
+    self.current_step += 1
+    obs, reward, done, info = self.env.step(action)
+    
+    # Replace done with negative reward and keep the episode going
+    if done:
+        reward = -200
+        done = False
+        self.env.reset()
+    # Overwrite the done signal when 
+    if self.current_step >= self.max_steps:
+      done = True
+      # Update the info dict to signal that the limit was exceeded
+      info['time_limit_reached'] = True
+
+    #Adding Gaussian noize
+    obs = np.array(obs)
+    obs = obs + np.random.randn(*obs.shape) * 0.03
+
     return obs, np.float(reward), np.bool(done), info
 
 
