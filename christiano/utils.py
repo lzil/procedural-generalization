@@ -61,7 +61,7 @@ def setup_logging(args):
 
     #Setting up directory for logs
     if not args.log_name:
-        args.log_name = args.env_name + datetime.datetime.now().strftime('_%Y_%M_%d_%H_%I_%S')
+        args.log_name = args.env_name + datetime.datetime.now().strftime('_%Y_%m_%d_%H_%-M_%S')
 
     run_dir = os.path.join(args.log_dir, args.log_name)
     os.makedirs(run_dir, exist_ok=True)

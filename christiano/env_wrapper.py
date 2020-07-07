@@ -16,9 +16,6 @@ class Gym_procgen_continuous(gym.Wrapper):
     self.max_steps = max_steps
     # Counter of steps per episode
     self.current_step = 0
-  
-  def set_maxsteps(self, max_steps):
-    self.max_steps = max_steps
 
   def reset(self):
     """
@@ -48,6 +45,9 @@ class Gym_procgen_continuous(gym.Wrapper):
       done = True
       # Update the info dict to signal that the limit was exceeded
       info['time_limit_reached'] = True
+      self.current_step = 0
+      self.reset()
+
     return obs, np.float(reward), np.bool(done), info
 
 
@@ -62,17 +62,17 @@ class Atari_continuous(gym.Wrapper):
   def __init__(self, env_name, max_steps=10000, **kwargs):
     self.env_fn = lambda : FrameStack(AtariPreprocessing(
             env = gym.make(str(env_name) +"NoFrameskip-v4"),
-            terminal_on_life_loss = True, frame_skip = 1, scale_obs = True), num_stack = 4)
+            terminal_on_life_loss = True, frame_skip = 1), num_stack = 4)
 
     env = self.env_fn()
     # Call the parent constructor, so we can access self.env later
     super(Atari_continuous, self).__init__(env)
+
+    self.env_name = env_name
     self.max_steps = max_steps
     # Counter of steps per episode
     self.current_step = 0
-  
-  def set_maxsteps(self, max_steps):
-    self.max_steps = max_steps
+
 
   def reset(self):
     """
@@ -82,7 +82,7 @@ class Atari_continuous(gym.Wrapper):
     self.current_step = 0
     self.env.close()
     self.env = self.env_fn()
-    return self.env.reset()
+    return np.array(self.env.reset())
 
   def step(self, action):
     """
@@ -95,7 +95,11 @@ class Atari_continuous(gym.Wrapper):
     
     # Replace done with negative reward and keep the episode going
     if done:
-        reward = -200
+        if self.env_name == 'Seaquest':
+            reward = -200
+        elif self.env_name == 'BeamRider':
+            reward = -1000
+
         done = False
         self.env.reset()
     # Overwrite the done signal when 
@@ -103,10 +107,11 @@ class Atari_continuous(gym.Wrapper):
       done = True
       # Update the info dict to signal that the limit was exceeded
       info['time_limit_reached'] = True
+      self.current_step = 0
+      
+      self.reset()
 
-    #Adding Gaussian noize
-    obs = np.array(obs)
-    obs = obs + np.random.randn(*obs.shape) * 0.03
+    obs = np.array(obs, dtype = np.uint8)
 
     return obs, np.float(reward), np.bool(done), info
 

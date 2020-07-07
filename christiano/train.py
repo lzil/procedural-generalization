@@ -6,7 +6,7 @@ from stable_baselines import PPO2
 from stable_baselines.common.policies import MlpPolicy, CnnPolicy
 from stable_baselines.common import make_vec_env
 from stable_baselines.common.evaluation import evaluate_policy
-from stable_baselines.common.vec_env import VecVideoRecorder, DummyVecEnv
+from stable_baselines.common.vec_env import VecVideoRecorder, DummyVecEnv, SubprocVecEnv
 
 from register_policies import ImpalaPolicy
 from utils import *
@@ -140,15 +140,21 @@ class RewardNet(nn.Module):
         '''
         if self.env_type == 'procgen':
             clip = clip.permute(0,3,1,2)
+
+        clip / 255 + clip.new(clip.size()).normal_(0,0.03)
+
         return torch.sum(self.model(clip))
 
     def rew_fn(self, x):
         self.model.eval()
         if self.env_type == 'procgen':
             x = x.permute(0,3,1,2)
+        x = x / 255
+
         rewards = torch.squeeze(self.model(x)).detach().cpu().numpy()
         rewards = ((rewards / self.std) - self.mean) * 0.05
         return rewards
+
 
     def save(self, path):
         torch.save(self.model, path)
@@ -188,6 +194,7 @@ def calc_val_loss(reward_model, data_buffer, device):
     loss = 0
     num_pairs = 0
     for clip0, clip1 , label in data_buffer.val_iter():
+
         ret0 = reward_model(torch.from_numpy(clip0).float().to(device))
         ret1 = reward_model(torch.from_numpy(clip1).float().to(device))
         loss += rm_loss_func(ret0, ret1, label, device).item()
@@ -197,8 +204,9 @@ def calc_val_loss(reward_model, data_buffer, device):
 
     return av_loss
 
+
 @timeitt
-def train_reward(reward_model, data_buffer, num_samples, batch_size, device = 'cuda:0'):
+def train_reward(reward_model, data_buffer, num_samples, batch_size, device = 'cuda:0', obs_noize = 0.03):
     '''
     Traines a given reward_model for num_batches from data_buffer
     Returns new reward_model
@@ -223,6 +231,7 @@ def train_reward(reward_model, data_buffer, num_samples, batch_size, device = 'c
         optimizer.zero_grad()
         reward_model.train()
         for clip0, clip1 , label in annotations:
+            
             ret0 = reward_model(torch.from_numpy(clip0).float().to(device))
             ret1 = reward_model(torch.from_numpy(clip1).float().to(device))
             loss += rm_loss_func(ret0, ret1, label, device)
@@ -234,11 +243,11 @@ def train_reward(reward_model, data_buffer, num_samples, batch_size, device = 'c
             val_loss = calc_val_loss(reward_model, data_buffer, device) 
             av_loss = np.mean(losses[-100:])
             #Adaptive L2 reg
-            if val_loss > 1.5 * av_loss:
+            if val_loss + 0.5 > 1.5 * (av_loss + 0.5):
                 for g in optimizer.param_groups: 
                     g['weight_decay'] = g['weight_decay'] * 1.1
                     weight_decay = g['weight_decay']
-            elif val_loss < 1.1 * av_loss:
+            elif val_loss + 0.5 < 1.1 * (av_loss + 0.5):
                  for g in optimizer.param_groups:
                     g['weight_decay'] = g['weight_decay'] / 1.1   
                     weight_decay = g['weight_decay']
@@ -276,7 +285,6 @@ def train_policy(venv_fn, reward_model, policy, num_steps, device):
 from collections import namedtuple
 Annotation = namedtuple('Annotation', ['clip0', 'clip1', 'label']) 
 
-
 @timeitt
 def collect_annotations(env_fn, policy, num_pairs, clip_size):
     '''Collects episodes using the provided policy, slices them to snippets of given length,
@@ -284,35 +292,35 @@ def collect_annotations(env_fn, policy, num_pairs, clip_size):
     Returns a list of named tuples (clip0, clip1, label), where label is float in [0,1]
 
     '''
-    env = env_fn()
-    env.set_maxsteps(clip_size * 2 * num_pairs+10)
+    venv = make_vec_env(env_fn, n_envs = 16, vec_env_cls = SubprocVecEnv) 
+    venv.set_attr('max_steps', int(clip_size * 2 * num_pairs / 16) + 10)
     clip_pool = []
-    obs = env.reset()
-    while len(clip_pool) < num_pairs *2:
-        clip = {}
-        clip['observations'] = []
-        clip['return'] = 0
-        
-        while len(clip['observations']) < clip_size:
+    obs_stack = []
+    obs_b = venv.reset()
+    while len(clip_pool) < num_pairs * 2:
+        clip_returns = 16 * [0]
+        for _ in range(clip_size):
             # _states are only useful when using LSTM policies
-            action, _states = policy.predict(obs)
-            
-            clip['observations'].append(obs)
-            obs, reward, done, info = env.step(action)    
-            clip['return'] += reward
-            # TODO
-            #probably should add noize to observations as a regularization (Ibarz et al. page 15)
-        clip_pool.append(clip)
+            action_b , _states = policy.predict(obs_b)
+            obs_stack.append(obs_b)
+
+            obs_b, r_b, dones, infos = venv.step(action_b)    
+            clip_returns += r_b
+
+        obs_stack = np.array(obs_stack)
+        clip_pool.extend([dict( observations = obs_stack[:, i, :], sum_rews = clip_returns[i]) for i in range(16)])
+
+        obs_stack = []
 
     clip_pairs = np.random.choice(clip_pool, (num_pairs, 2), replace = False)
     data = []
     for clip0, clip1 in clip_pairs:
 
-        if clip0['return'] > clip1['return']:
+        if clip0['sum_rews'] > clip1['sum_rews']:
             label = 0.0
-        elif clip0['return'] < clip1['return']:
+        elif clip0['sum_rews'] < clip1['sum_rews']:
             label = 1.0 
-        elif clip0['return'] == clip1['return']:
+        elif clip0['sum_rews'] == clip1['sum_rews']:
             # skipping clips with same rewards for now
             continue
             #label = 0.5
@@ -342,7 +350,7 @@ def main():
     parser.add_argument('--steps_per_iter', type=int, default=10**6)
     parser.add_argument('--pairs_per_iter', type=int, default=10**5)
     parser.add_argument('--pairs_in_batch', type=int, default=16)
-    parser.add_argument('--l2', type=float, default=0.01)
+    parser.add_argument('--l2', type=float, default=0.1)
 
 
     args = parser.parse_args()
@@ -370,7 +378,7 @@ def main():
     elif args.env_type == 'atari':
         env_fn = lambda: Atari_continuous(args.env_name)
 
-    venv_fn  = lambda:  make_vec_env(env_fn, monitor_dir = monitor_dir, n_envs = 32)
+    venv_fn  = lambda:  make_vec_env(env_fn, monitor_dir = monitor_dir, n_envs = 16, vec_env_cls = SubprocVecEnv)
 
 
     #in case this is a fresh run 
