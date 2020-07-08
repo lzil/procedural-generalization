@@ -17,9 +17,11 @@ import random
 import argparse, pickle
 
 import tensorflow as tf
-import os, time, datetime
+import os, time, datetime, sys
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+
 
 
 class AnnotationBuffer(object):
@@ -59,7 +61,8 @@ class AnnotationBuffer(object):
         'iterator over validation set'
         return iter(self.val_data)
 
-    def get_size(self):
+    @property
+    def size(self):
         '''returns buffer size'''
         return self.current_size
 
@@ -152,7 +155,9 @@ class RewardNet(nn.Module):
         x = x / 255
 
         rewards = torch.squeeze(self.model(x)).detach().cpu().numpy()
-        rewards = ((rewards / self.std) - self.mean) * 0.05
+
+        rewards = 0.05 * (rewards - self.mean) / self.std
+        print(np.mean(rewards))
         return rewards
 
 
@@ -165,9 +170,11 @@ class RewardNet(nn.Module):
             rewards.extend(self.rew_fn(torch.from_numpy(clip0).float().to(device)))
             rewards.extend(self.rew_fn(torch.from_numpy(clip1).float().to(device)))
 
-        self.mean = np.mean(rewards)
-        self.std = np.std(rewards)
+        unnorm_rewards = self.std * np.array(rewards) / 0.05  + self.mean
+        self.mean, self.std = np.mean(unnorm_rewards), np.std(unnorm_rewards)
 
+        print(self.mean, self.std)
+        time.sleep(4)
 
 
 def rm_loss_func(ret0, ret1, label, device = 'cuda:0'):
@@ -275,6 +282,10 @@ def train_policy(venv_fn, reward_model, policy, num_steps, device):
     proxy_reward_function = lambda x: reward_model.rew_fn(torch.from_numpy(x).float().to(device))
     proxy_reward_venv = Vec_reward_wrapper(venv_fn(), proxy_reward_function)
 
+    # proxy_reward_function = lambda x: reward_model.rew_fn(torch.from_numpy(x[None,:]).float().to(device))
+    # proxy_env_fn = lambda : Reward_wrapper(env_fn(), proxy_reward_function)
+    # proxy_reward_venv = make_vec_env(proxy_env_fn, n_envs = 16, vec_env_cls = SubprocVecEnv)
+
     policy.set_env(proxy_reward_venv)
     policy.learn(num_steps)
 
@@ -293,6 +304,7 @@ def collect_annotations(env_fn, policy, num_pairs, clip_size):
 
     '''
     venv = make_vec_env(env_fn, n_envs = 16, vec_env_cls = SubprocVecEnv) 
+
     venv.set_attr('max_steps', int(clip_size * 2 * num_pairs / 16) + 10)
     clip_pool = []
     obs_stack = []
@@ -350,7 +362,7 @@ def main():
     parser.add_argument('--steps_per_iter', type=int, default=10**6)
     parser.add_argument('--pairs_per_iter', type=int, default=10**5)
     parser.add_argument('--pairs_in_batch', type=int, default=16)
-    parser.add_argument('--l2', type=float, default=0.1)
+    parser.add_argument('--l2', type=float, default=0.3)
 
 
     args = parser.parse_args()
@@ -385,7 +397,7 @@ def main():
     if not args.resume_training:
         i_num = 0
         policy = PPO2(ImpalaPolicy, venv_fn(), **args.ppo_kwargs)
-        reward_model = RewardNet(env_type = args.env_type)
+        reward_model = RewardNet(l2= args.l2, env_type = args.env_type)
         data_buffer = AnnotationBuffer()
         store_args(args, run_dir)   
 
@@ -396,12 +408,15 @@ def main():
         print(f'================== iter : {i} ====================')
         num_pairs = int(args.init_buffer_size / (1+i))
         
-        annotations = collect_annotations(env_fn, policy, num_pairs, args.clip_size)
-        data_buffer.add(annotations)
-        print(f'Buffer size = {data_buffer.get_size()}')
+        # for _ in range(20):
+        #     annotations = collect_annotations(env_fn, policy, num_pairs, args.clip_size)
+        #     data_buffer.add(annotations)     
+        #     print(f'Buffer size = {data_buffer.size}')
         
-        reward_model = train_reward(reward_model, data_buffer, args.pairs_per_iter, args.pairs_in_batch) 
+        # reward_model = train_reward(reward_model, data_buffer, args.pairs_per_iter, args.pairs_in_batch) 
         reward_model.set_mean_std(data_buffer.get_all_pairs())
+        reward_model.set_mean_std(data_buffer.get_all_pairs())
+
         policy = train_policy(venv_fn, reward_model, policy, args.steps_per_iter, device)
 
 
@@ -412,8 +427,8 @@ def main():
         proxy_reward_function = lambda x: reward_model.rew_fn(torch.from_numpy(x)[None,:].float().to(device))
         proxy_eval_env = Reward_wrapper(env_fn(), proxy_reward_function)
 
-        print(f'True policy preformance = {evaluate_policy(policy, eval_env, n_eval_episodes=1)}') 
-        print(f'Proxy policy preformance = {evaluate_policy(policy, proxy_eval_env, n_eval_episodes=1)}') 
+        print(f'True policy preformance = {evaluate_policy(policy, eval_env, n_eval_episodes=10)}') 
+        print(f'Proxy policy preformance = {evaluate_policy(policy, proxy_eval_env, n_eval_episodes=10)}') 
           
 
         save_state(run_dir, i, reward_model, policy, data_buffer)
