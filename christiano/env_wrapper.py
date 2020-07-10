@@ -55,8 +55,11 @@ from gym.wrappers import AtariPreprocessing, FrameStack
 
 
 class Atari_continuous(gym.Wrapper):
+
+##TODO mask score!
+
   """
-  :param env_name: (str) name of the Procgen environment that will be wrapped
+  :param env_name: (str) name of the Atari environment that will be wrapped
   :param max_steps: (int) Max number of steps per episode
   """
   def __init__(self, env_name, max_steps=10000, **kwargs):

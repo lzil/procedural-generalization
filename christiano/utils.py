@@ -1,6 +1,6 @@
 import os, time, datetime
 import pickle
-import json
+import json, csv
 from stable_baselines import PPO2
 import argparse
 
@@ -91,3 +91,19 @@ def load_args(args):
     args.resume_training = True
     
     return args
+
+
+def log_iter(run_dir, i, buffer_size, true_return, proxy_return, rm_train_stats):
+
+    info_path = os.path.join(run_dir, 'LOG.csv')
+
+    if not os.path.exists(info_path):
+        with open(info_path, 'w') as f: 
+            rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+            rew_writer.writerow(['iter', 'buffer_size', 'true_return', 'proxy_return', 'train_loss', 'val_loss', 'l2'])
+
+
+    train_loss, val_loss, l2 = rm_train_stats
+    with open(info_path, 'a') as f: 
+        rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        rew_writer.writerow([i, buffer_size, true_return, proxy_return, train_loss, val_loss, l2])

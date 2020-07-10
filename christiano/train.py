@@ -265,7 +265,7 @@ def train_reward(reward_model, data_buffer, num_samples, batch_size, device = 'c
     reward_model.l2 = weight_decay   
     reward_model.set_mean_std(data_buffer.get_all_pairs())
 
-    return reward_model
+    return reward_model, (av_loss, val_loss, weight_decay)
 
     
 
@@ -408,12 +408,14 @@ def main():
         print(f'================== iter : {i} ====================')
         num_pairs = int(args.init_buffer_size / (1+i))
         
-        for _ in range(20):
-            annotations = collect_annotations(env_fn, policy, num_pairs, args.clip_size)
-            data_buffer.add(annotations)     
-            print(f'Buffer size = {data_buffer.size}')
+        prev_size = data_buffer.size
+        while data_buffer.size - prev_size < num_pairs:
+            annotations = collect_annotations(env_fn, policy, 500, args.clip_size)
+            data_buffer.add(annotations)   
+
+        print(f'Buffer size = {data_buffer.size}')
         
-        reward_model = train_reward(reward_model, data_buffer, args.pairs_per_iter, args.pairs_in_batch) 
+        reward_model, rm_train_stats = train_reward(reward_model, data_buffer, args.pairs_per_iter, args.pairs_in_batch) 
         policy = train_policy(venv_fn, reward_model, policy, args.steps_per_iter, device)
 
 
@@ -424,11 +426,16 @@ def main():
         proxy_reward_function = lambda x: reward_model.rew_fn(torch.from_numpy(x)[None,:].float().to(device))
         proxy_eval_env = Reward_wrapper(env_fn(), proxy_reward_function)
 
-        print(f'True policy preformance = {evaluate_policy(policy, eval_env, n_eval_episodes=3)}') 
-        print(f'Proxy policy preformance = {evaluate_policy(policy, proxy_eval_env, n_eval_episodes=3)}') 
-          
+        true_performance, _ = evaluate_policy(policy, eval_env, n_eval_episodes=1)
+        proxy_performance, _ = evaluate_policy(policy, proxy_eval_env, n_eval_episodes=1)
+
+        print(f'True policy preformance = {true_performance}') 
+        print(f'Proxy policy preformance = {proxy_performance}') 
+
 
         save_state(run_dir, i, reward_model, policy, data_buffer)
+        log_iter(run_dir, i, data_buffer.size, true_performance, proxy_performance, rm_train_stats)
+
         os.rename(monitor_dir, monitor_dir + '_' + str(i))        
 
 
