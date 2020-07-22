@@ -15,6 +15,7 @@ from env_wrapper import *
 import numpy as np
 import random
 import argparse, pickle
+import multiprocessing
 
 import tensorflow as tf
 import os, time, datetime, sys
@@ -65,6 +66,16 @@ class AnnotationBuffer(object):
     def size(self):
         '''returns buffer size'''
         return self.current_size
+
+    @property
+    def loss_lb(self):
+        return - np.mean([label == 0.5 for (c1,c2,label) in self.train_data]) * np.log(0.5)
+
+    @property
+    def val_loss_lb(self):
+        return - np.mean([label == 0.5 for (c1,c2,label) in self.val_data]) * np.log(0.5)
+
+    
 
     def get_all_pairs(self):
         return np.concatenate((self.train_data, self.val_data))
@@ -248,16 +259,16 @@ def train_reward(reward_model, data_buffer, num_samples, batch_size, device = 'c
             val_loss = calc_val_loss(reward_model, data_buffer, device) 
             av_loss = np.mean(losses[-100:])
             #Adaptive L2 reg
-            if val_loss + 0.5 > 1.5 * (av_loss + 0.5):
+            if val_loss > 1.5 * (av_loss):
                 for g in optimizer.param_groups: 
                     g['weight_decay'] = g['weight_decay'] * 1.1
                     weight_decay = g['weight_decay']
-            elif val_loss + 0.5 < 1.1 * (av_loss + 0.5):
+            elif val_loss < av_loss * 1.1:
                  for g in optimizer.param_groups:
                     g['weight_decay'] = g['weight_decay'] / 1.1   
                     weight_decay = g['weight_decay']
 
-            print(f'batch : {batch_i}, loss : {av_loss:6.2f}, val loss: {val_loss:6.2f}, L2 : {weight_decay:8.6f}')
+            print(f'batch : {batch_i}, loss : {av_loss:6.2f}, val loss: {val_loss:6.2f}, min_loss : {data_buffer.val_loss_lb:6.2f}, L2 : {weight_decay:8.6f}')
             
         loss.backward()
         optimizer.step()
@@ -303,14 +314,17 @@ def collect_annotations(env_fn, policy, num_pairs, clip_size):
     Returns a list of named tuples (clip0, clip1, label), where label is float in [0,1]
 
     '''
-    venv = make_vec_env(env_fn, n_envs = 16, vec_env_cls = SubprocVecEnv) 
+    #This is probably optimal for speed on Atari and don't make difference on Procgen
+    n_envs = multiprocessing.cpu_count()
 
-    venv.set_attr('max_steps', int(clip_size * 2 * num_pairs / 16) + 10)
+    venv = make_vec_env(env_fn, n_envs = n_envs, vec_env_cls = SubprocVecEnv) 
+
+    venv.set_attr('max_steps', int(clip_size * 2 * num_pairs / n_envs) + 10)
     clip_pool = []
     obs_stack = []
     obs_b = venv.reset()
     while len(clip_pool) < num_pairs * 2:
-        clip_returns = 16 * [0]
+        clip_returns = n_envs * [0]
         for _ in range(clip_size):
             # _states are only useful when using LSTM policies
             action_b , _states = policy.predict(obs_b)
@@ -320,7 +334,7 @@ def collect_annotations(env_fn, policy, num_pairs, clip_size):
             clip_returns += r_b
 
         obs_stack = np.array(obs_stack)
-        clip_pool.extend([dict( observations = obs_stack[:, i, :], sum_rews = clip_returns[i]) for i in range(16)])
+        clip_pool.extend([dict( observations = obs_stack[:, i, :], sum_rews = clip_returns[i]) for i in range(n_envs)])
 
         obs_stack = []
 
@@ -333,9 +347,9 @@ def collect_annotations(env_fn, policy, num_pairs, clip_size):
         elif clip0['sum_rews'] < clip1['sum_rews']:
             label = 1.0 
         elif clip0['sum_rews'] == clip1['sum_rews']:
-            # skipping clips with same rewards for now
-            continue
-            #label = 0.5
+            # # skipping clips with same rewards for now
+            # continue
+            label = 0.5
 
         data.append(Annotation(np.array(clip0['observations']), np.array(clip1['observations']), label))
 
@@ -351,18 +365,18 @@ def main():
     parser.add_argument('--distribution_mode', type=str, default='easy', choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=1)
     parser.add_argument('--start_level', type=int, default=0)
-    parser.add_argument('--log_dir', type=str, default='logs')
+    parser.add_argument('--log_dir', type=str, default='LOGS')
     parser.add_argument('--log_name', type=str, default='')
 
     parser.add_argument('--resume_training', action='store_true')
 
     parser.add_argument('--init_buffer_size', type=int, default=500)
     parser.add_argument('--clip_size', type=int, default=25)
-    parser.add_argument('--num_iters', type=int, default=50)
-    parser.add_argument('--steps_per_iter', type=int, default=10**6)
+    parser.add_argument('--num_iters', type=int, default=500)
+    parser.add_argument('--steps_per_iter', type=int, default=2 * 10**5)
     parser.add_argument('--pairs_per_iter', type=int, default=10**5)
     parser.add_argument('--pairs_in_batch', type=int, default=16)
-    parser.add_argument('--l2', type=float, default=0.3)
+    parser.add_argument('--l2', type=float, default=0.0001)
 
 
     args = parser.parse_args()
@@ -390,7 +404,7 @@ def main():
     elif args.env_type == 'atari':
         env_fn = lambda: Atari_continuous(args.env_name)
 
-    venv_fn  = lambda:  make_vec_env(env_fn, monitor_dir = monitor_dir, n_envs = 16, vec_env_cls = SubprocVecEnv)
+    venv_fn  = lambda:  make_vec_env(env_fn, monitor_dir = monitor_dir, n_envs = multiprocessing.cpu_count(), vec_env_cls = SubprocVecEnv)
 
 
     #in case this is a fresh run 
@@ -402,15 +416,15 @@ def main():
         store_args(args, run_dir)   
 
 
-    
 
     for i in range(i_num, args.num_iters + i_num):
         print(f'================== iter : {i} ====================')
-        num_pairs = int(args.init_buffer_size / (1+i))
-        
-        prev_size = data_buffer.size
+
+        num_pairs = int(args.init_buffer_size /(i+1))
+
+        prev_size = data_buffer.size     
         while data_buffer.size - prev_size < num_pairs:
-            annotations = collect_annotations(env_fn, policy, 500, args.clip_size)
+            annotations = collect_annotations(env_fn, policy, num_pairs, args.clip_size)
             data_buffer.add(annotations)   
 
         print(f'Buffer size = {data_buffer.size}')
@@ -434,7 +448,7 @@ def main():
 
 
         save_state(run_dir, i, reward_model, policy, data_buffer)
-        log_iter(run_dir, i, data_buffer.size, true_performance, proxy_performance, rm_train_stats)
+        log_iter(run_dir, i, data_buffer, true_performance, proxy_performance, rm_train_stats)
 
         os.rename(monitor_dir, monitor_dir + '_' + str(i))        
 

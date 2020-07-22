@@ -93,17 +93,17 @@ def load_args(args):
     return args
 
 
-def log_iter(run_dir, i, buffer_size, true_return, proxy_return, rm_train_stats):
+def log_iter(run_dir, i, data_buffer, true_return, proxy_return, rm_train_stats):
 
     info_path = os.path.join(run_dir, 'LOG.csv')
 
     if not os.path.exists(info_path):
         with open(info_path, 'w') as f: 
             rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-            rew_writer.writerow(['iter', 'buffer_size', 'true_return', 'proxy_return', 'train_loss', 'val_loss', 'l2'])
+            rew_writer.writerow(['iter', 'buffer_size', 'true_return', 'proxy_return', 'train_loss', 'val_loss', 'min_val_loss', 'l2'])
 
 
     train_loss, val_loss, l2 = rm_train_stats
     with open(info_path, 'a') as f: 
         rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        rew_writer.writerow([i, buffer_size, true_return, proxy_return, train_loss, val_loss, l2])
+        rew_writer.writerow([i, data_buffer.size, true_return, proxy_return, train_loss, val_loss, data_buffer.val_loss_lb, l2])

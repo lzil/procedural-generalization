@@ -65,7 +65,7 @@ class Atari_continuous(gym.Wrapper):
   def __init__(self, env_name, max_steps=10000, **kwargs):
     self.env_fn = lambda : FrameStack(AtariPreprocessing(
             env = gym.make(str(env_name) +"NoFrameskip-v4"),
-            terminal_on_life_loss = True, frame_skip = 1), num_stack = 4)
+            terminal_on_life_loss = True, frame_skip = 4), num_stack = 4)
 
     env = self.env_fn()
     # Call the parent constructor, so we can access self.env later
