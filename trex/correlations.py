@@ -15,7 +15,7 @@ from scipy.stats import spearmanr
 
 from helpers.utils import *
 from reward_metric import get_corr_with_ground
-from train_reward import get_demo
+from train_reward import get_file
 
 
 # takes in directory of reward models and demonstrations, and appropriate constraints,
@@ -36,7 +36,8 @@ def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, 
     # figure out which demonstrations to use and load them
     print(f'== d_constraints: {d_constraints}')
     rows = filter_csv(os.path.join(demo_dir, 'demo_infos.csv'), d_constraints)
-    demos = [get_demo(row['path']) for row in rows]
+    # print([row['demo_id'] for row in rows])
+    demos = [get_file(row['demo_id'] + '.demo') for row in rows]
     print(f'== Using {len(demos)} demonstrations.')
     
     # do actual correlation calculations
@@ -63,8 +64,8 @@ def calc_correlations(reward_dir, demo_dir, r_constraints={}, d_constraints={}, 
         spearmans = []
         ids = []
         for r in range(len(rows)):
-            r_path = rows[r]['path']
-            rm_id = get_id(r_path)
+            r_path = rows[r]['demo_id']
+            rm_id = rows[r]['demo_id']
             print(f'{r+1}/{len(rows)}: {rm_id}, {r_path}')
 
             device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -184,8 +185,8 @@ def parse_args():
     parser.add_argument('--distribution_mode', default='easy')
     parser.add_argument('--sequential', default='0', type=str)
 
-    parser.add_argument('--demo_dir', default='trex/demos')
-    parser.add_argument('--reward_dir', default='trex/reward_models/')
+    parser.add_argument('--demo_dir', default='demos')
+    parser.add_argument('--reward_dir', default='reward_models/')
 
     # use length of demonstration as proxy for demonstration reward
     parser.add_argument('--baseline_reward', action='store_true')

@@ -1,20 +1,21 @@
 # procedural-generalization
 
-testing the generalization properties of the openai procgen benchmark
+Testing the generalization properties of [T-REX](https://github.com/hiwonjoon/ICML2019-TREX/blob/master/atari/LearnAtariReward.py) algorithm on [Procgen](https://github.com/openai/procgen) suite of environments
 
+## Setup
 
-## setup
-
-setup train-procgen environments using lines below
+To setup the environment use the following commands:
 
 ```
-git clone https://github.com/openai/train-procgen.git
-conda env update --name train-procgen --file train-procgen/environment.yml
-conda activate train-procgen
+git clone https://github.com/lzil/procedural-generalization.git
+conda env update --name trex-procgen --file procedural-generalization/trex/environment.yml
+conda activate trex-procgen
 pip install https://github.com/openai/baselines/archive/9ee399f5b20cd70ac0a871927a6cf043b478193f.zip  
-pip install pyyaml
-pip install -e train-procgen
 ```
+
+Then download the pre-generated demo's [here](https://drive.google.com/drive/folders/1DjGpKnXip6WBXuHzajt1FaiWGU7s4338?usp=sharing)  
+Alternatively you can generate fresh demos yourself, using e.g.  
+```python gen_demos.py  --models_dir experts/fruitbot/easy/checkpoints --env_name fruitbot --name fruitbot_sequential --num_dems 200```
 
 
 ---

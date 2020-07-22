@@ -1,4 +1,5 @@
-# adapted heavily from https://github.com/hiwonjoon/ICML2019-TREX/blob/master/atari/LearnAtariReward.py
+# adapted heavily from
+# https://github.com/hiwonjoon/ICML2019-TREX/blob/master/atari/LearnAtariReward.py
 
 import numpy as np
 import csv
@@ -9,63 +10,63 @@ import torch.nn as nn
 import torch.optim as optim
 import tensorflow as tf
 
-import os, glob
+import os, sys, glob
 import random
-import sys
 from shutil import copy2
 import argparse
 
 import logging
 
-sys.path.append('../')
-
 from helpers.utils import *
 from reward_metric import get_corr_with_ground
 
+sys.path.append('../')
 
-def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, verbose=True, use_snippet_rewards=False, use_clip_heuristic = True):
+
+def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length,
+                   verbose=True, use_snippet_rewards=False, use_clip_heuristic=True):
     """
-    This function takes a set of demonstrations and produces 
+    This function takes a set of demonstrations and produces
     a training set consisting of pairs of clips with assigned preferences
     """
 
-    if verbose: 
-        logging.info( f' {len(dems)} demonstrations provided')
+    if verbose:
+        logging.info(f' {len(dems)} demonstrations provided')
         logging.info(f"demo lengths : {[d['length'] for d in dems]}")
         logging.info(f"demo returns : {[d['return'] for d in dems]}")
         demo_lens = [d['length'] for d in dems]
         logging.info(f'demo length: min = {min(demo_lens)}, max = {max(demo_lens)}')
         assert min_snippet_length < min(demo_lens), "One of the trajectories is too short"
-    
+
     data = []
     n_honest = 0
 
     while len(data) < num_snippets:
 
-        #pick two random demos
-        i1, i2 = np.random.choice(len(dems) ,2,  replace = False)
-        d0, d1 = sorted([dems[i1], dems[i2]], key = lambda x: x['return'])   
+        # pick two random demos
+        i1, i2 = np.random.choice(len(dems), 2, replace=False)
+        d0, d1 = sorted([dems[i1], dems[i2]], key=lambda x: x['return'])
         if d0['return'] == d1['return']:
             continue
 
-        #first adjust max stippet length such that we can pick
-        #the later starting clip from the better trajectory
+        # first adjust max stippet length such that we can pick
+        # the later starting clip from the better trajectory
         cur_min_len = min(d0['length'], d1['length'])
         cur_max_snippet_len = min(cur_min_len, max_snippet_length)
-        #randomly choose snippet length
+        # randomly choose snippet length
         cur_len = np.random.randint(min_snippet_length, cur_max_snippet_len)
 
-        if use_clip_heuristic: 
-            #pick tj snippet to be later than ti
+        if use_clip_heuristic:
+            # pick tj snippet to be later than ti
             d0_start = np.random.randint(cur_min_len - cur_len + 1)
             d1_start = np.random.randint(d0_start, d1['length'] - cur_len + 1)
-        else:  
-            #pick randomly
+        else:
+            # pick randomly
             d0_start = np.random.randint(d0['length'] - cur_len)
             d1_start = np.random.randint(d1['length'] - cur_len)
 
-        clip0  = d0['observations'][d0_start : d0_start+cur_len]
-        clip1  = d1['observations'][d1_start : d1_start+cur_len]
+        clip0 = d0['observations'][d0_start : d0_start+cur_len]
+        clip1 = d1['observations'][d1_start : d1_start+cur_len]
 
         clip0_rew = np.sum(d0['rewards'][d0_start : d0_start+cur_len])
         clip1_rew = np.sum(d1['rewards'][d1_start : d1_start+cur_len])
@@ -83,6 +84,8 @@ def create_dataset(dems, num_snippets, min_snippet_length, max_snippet_length, v
     return np.array(data), n_honest/num_snippets
 
 # actual reward learning network
+
+
 class RewardNet(nn.Module):
     def __init__(self, output_abs=False):
         super().__init__()
@@ -119,7 +122,7 @@ class RewardNet(nn.Module):
 
     def predict_returns(self, traj):
         '''calculate cumulative return of trajectory'''
-        x = traj.permute(0,3,1,2) #get into NCHW format
+        x = traj.permute(0, 3, 1, 2)  # get into NCHW format
         if self.output_abs:
             r = torch.abs(self.model(x))
         else:
@@ -131,8 +134,10 @@ class RewardNet(nn.Module):
     def predict_batch_rewards(self, batch_obs):
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         with torch.no_grad():
-            x = torch.tensor(batch_obs, dtype=torch.float32).permute(0,3,1,2).to(device) #get into NCHW format
-            #compute forward pass of reward network (we parallelize across frames so batch size is length of partial trajectory)
+            # get into NCHW format
+            x = torch.tensor(batch_obs, dtype=torch.float32).permute(0, 3, 1, 2).to(device)
+            # compute forward pass of reward network (we parallelize across
+            # frames so batch size is length of partial trajectory)
             if self.output_abs:
                 r = torch.abs(self.model(x))
             else:
@@ -145,9 +150,9 @@ class RewardNet(nn.Module):
         all_r_j, abs_r_j = self.predict_returns(traj_j)
         return torch.stack((all_r_i, all_r_j)), abs_r_i + abs_r_j
 
-
-
 # trainer wrapper in order to make training the reward model a neat process
+
+
 class RewardTrainer:
     def __init__(self, args, device):
         self.device = device
@@ -159,7 +164,7 @@ class RewardTrainer:
     def learn_reward(self, train_set, val_set, test_set, test_dems):
         loss_criterion = nn.CrossEntropyLoss()
         optimizer = optim.Adam(self.net.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
-        
+
         max_val_acc = 0 
         eps_no_max = 0
 
@@ -172,7 +177,7 @@ class RewardTrainer:
                 reward_list = []
                 abs_reward_list = []
                 np.random.shuffle(train_set)
-                #each epoch consists of some updates - NOT passing through whole test set.
+                # each epoch consists of some updates - NOT passing through whole test set.
                 for i, ([traj_i, traj_j], label) in enumerate(train_set[:self.args.epoch_size]):
 
                     ti = torch.from_numpy(traj_i).float().to(self.device)
@@ -192,14 +197,14 @@ class RewardTrainer:
 
                     # L1 regularization on the output
                     l1_reg = abs_rewards * self.args.lam_l1
-                    
+
                     loss = loss_criterion(outputs, lb) + l1_reg
                     loss.backward()
                     optimizer.step()
 
                     item_loss = loss.item()
                     epoch_loss += item_loss
-                
+
                 epoch_loss /= self.args.epoch_size
                 train_acc, train_loss = self.calc_accuracy(train_set[:1000])
                 val_acc, val_loss = self.calc_accuracy(val_set[:1000]) #keep validation set to 1000
@@ -223,12 +228,11 @@ class RewardTrainer:
                 else:
                     eps_no_max += 1
 
-                #Early stopping
+                # Early stopping
                 if eps_no_max >= self.args.patience:
                     logging.info(f'Early stopping after epoch {epoch}')
                     self.net.load_state_dict(self.best_model)  #loading the model with the best validation accuracy
                     break
-                    
 
         logging.info("finished training")
         return os.path.join(self.args.checkpoint_dir, 'reward_best.pth'), accs
@@ -305,10 +309,9 @@ def parse_config():
     parser.add_argument('--use_clip_heuristic', type = bool, default = True, help='always pick later part of a better trajectory when generating clips')
 
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
-    parser.add_argument('--log_dir', default='trex/logs', help='general logs directory')
+    parser.add_argument('--log_dir', default='LOGS', help='general logs directory')
 
     # hopeully get rid of this
-    parser.add_argument('--demo_folder', nargs='+', default=['trex/demos'], help='path to folders with demos')
     parser.add_argument('--demo_csv', nargs='+', default=['demos/demo_infos.csv'], help='path to csv files with demo info')
 
     parser.add_argument('--save_dir', default='trex/reward_models', help='where the models and csv get stored')
@@ -351,7 +354,7 @@ def store_model(state_dict_path, max_return, max_length, accs, args):
 
 
 def get_file(file_name):
-    #searches for the demo with the given name in all subfolders,
+    #searches for the file with the given name in all subfolders,
     #then loads it and returns 
     path = glob.glob('./**/'+file_name, recursive=True)[0]
     demo = pickle.load(open(path, 'rb'))

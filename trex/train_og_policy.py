@@ -1,44 +1,39 @@
 #from baselines.ppo2 import ppo2
 # use this for better logging capability
 import helpers.baselines_ppo2 as ppo2
+from helpers.utils import add_yaml_args, log_this
 from baselines.common.models import build_impala_cnn
 from baselines.common.mpi_util import setup_mpi_gpus
 from procgen import ProcgenEnv
 from baselines.common.vec_env import (
     VecExtractDictObs,
     VecMonitor,
-    VecFrameStack,
     VecNormalize
 )
 from baselines import logger
 from mpi4py import MPI
 import argparse
 
-# custom imports to make documenting easier
-import yaml
-import json
-import logging
-import time
 
+import tensorflow as tf
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-import tensorflow as tf
-
-from helpers.utils import add_yaml_args, log_this
-
 
 # figure out the right configuration for the run
+
+
 def parse_config():
     parser = argparse.ArgumentParser(description='Process procgen training arguments.')
     parser.add_argument('-c', '--config', type=str, default=None)
 
     parser.add_argument('--env_name', type=str, default='coinrun')
-    parser.add_argument('--distribution_mode', type=str, default='hard', choices=["easy", "hard", "exploration", "memory", "extreme"])
+    parser.add_argument('--distribution_mode', type=str, default='hard',
+                        choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=0)
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--load_path', type=str, default=None)
-    parser.add_argument('--log_dir', type=str, default='trex/experts')
+    parser.add_argument('--log_dir', type=str, default='TEST_LOGS/experts')
     parser.add_argument('--log_name', type=str, default='')
     # logs every num_envs * nsteps
     parser.add_argument('--log_interval', type=int, default=5)
@@ -64,6 +59,7 @@ def parse_config():
         args = add_yaml_args(args, args.config)
 
     return args
+
 
 def main():
 

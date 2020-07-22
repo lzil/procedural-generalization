@@ -33,8 +33,8 @@ parser.add_argument('--num_dems', default=100, type=int, help="number of demonst
 parser.add_argument('--max_ep_len', default = 1000, type = int, help = "Max length of the demo")
 parser.add_argument('--models_dir', type = str)
 parser.add_argument('--sequential', type = int, default=0)
-parser.add_argument('--log_dir', type = str, default = 'trex/demos')
-parser.add_argument('--name', type = str, default = None)
+parser.add_argument('--log_dir', type = str, default = 'TEST_LOGS/demos')
+parser.add_argument('--name', type = str, default = 'NONAME', help = "naming for this batch of generated trajectories")
 
 
 args = parser.parse_args()
