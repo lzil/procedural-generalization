@@ -13,61 +13,47 @@ conda activate trex-procgen
 pip install https://github.com/openai/baselines/archive/9ee399f5b20cd70ac0a871927a6cf043b478193f.zip  
 ```
 
-Then download the pre-generated demo's [here](https://drive.google.com/drive/folders/1DjGpKnXip6WBXuHzajt1FaiWGU7s4338?usp=sharing) and put into `trex/demos` folder  
-Alternatively you can generate fresh demos yourself, using e.g.  
-```python gen_demos.py  --models_dir experts/fruitbot/easy/checkpoints --env_name fruitbot --name fruitbot_sequential --num_dems 200```
+Then download the pre-generated demo's [here](https://drive.google.com/drive/folders/1DjGpKnXip6WBXuHzajt1FaiWGU7s4338?usp=sharing) and put into `trex/demos` folder 
 
-The demos are generated using expert policies located in the [experts](experts) folder
-
----
-
-## training a baseline agent
-
-Simply run `train.py` in `baseline_agent/` with appropriate parameters.
-
-Parameters can be entered with a config file with a `-c` flag.
-Example config files in `baseline_agent/configs/`.
-
-The default parameters are a good place to start; check out the `train-procgen` repo for more details.
-
-Sample run:
-`python train.py -c test.yaml`
+To generate fresh demos yourself, use e.g.  
+```python gen_demos.py  --models_dir experts/fruitbot/easy/checkpoints --env_name fruitbot --name fruitbot_sequential --num_dems 200```  
+After downloading the [expert policies](https://drive.google.com/drive/folders/1-LnTGdBjuIIBPo7BIu1uwB7K9qlAMvJH?usp=sharing) and putting them into `trex/experts` folder  
+You can also train experts yourself using the code available in the [train-procgen repo](https://github.com/openai/train-procgen) as we did
 
 
----
-
-## training with t-rex
-
-T-REX consists of 4 main steps.
-
-1. train an agent with PPO to do well on an environment, in general.
-    - any existing PPO trainer will do, for instance the one in `baseline_agent/train.py`
-    - save checkpoints of these models into some directory. example: `chaser_model_dir`
-2. sample trajectories from those trained models, from a minimal number of levels, and sort according to rewards obtained
-    - done in `reward_model.py`
-    - demonstrations/trajectories generated in `generate_procgen_demonstrations`
-3. use those trajectories to train a reward model
-    - done in `reward_model.py`
-    - first create the training data `create_training_data`, then train a `RewardNet` with a `RewardTrainer`
-4. train another agent with that reward model
-    - done in `train_policy.py`
-    - load the reward model saved from step 3 to train an actual policy
+## Training reward models with T-REX algorithm
 
 
-TODO: sample runs, config files
+
+Now the `demos` folder should contain the sufficient amount of demos for the envirionment in question. The provided demos have different attained returns (the experts purposefully chosen to have varied skill levels)
+
+The algorithm will create the training data by selecting the requested number of demos from the available ones,
+then picking the pairs of clips coming from different demos and assigning preference in each clip based on the return of the demo that it came from.
+Having this training set, the we train the reward model that would fit the created data
+
+You can check the detailed desctiption of the algorithm in the [paper](https://arxiv.org/abs/1904.06387) by Brown et al.
+
+
+To train reward for the `fruitbot` given 200 demos run:  
+`python train_reward.py --env_name fruitbot --num_dems 200`
+
+Many algorithm hyperparameters could be specified from the command line   
+Check `python train_reward.py --help` for the full list
+
+To run many experiments use `run_experiments.py`. For example:  
+`python run_experiments.py --env_name starpilot fruitbot coinrun --num_dems 30 100 200 500 1000 --num_seeds 5 --save_name NEW_RUN`  
+will run 3(envirionments) x 5(different # of demos) x 5(random seeds) = 75 experiments and save the details of the reward models to `reward_models/rm_infos_NEW_RUN.csv` file
 
 ---
 
-## calculating and plotting correlations
+## Plotting the reward model correlations
 
 We can evaluate the quality of a given model with a simple metric: the correlation between the real return of a trajectory and the predicted return from the reward model.
 
-The code for evaluating the correlation is in `reward_metric.py`, and the wrapper code that does all this in an organized fashion is in `plot_correlations.py`.
+The spearman and pearson correlations of the learned reward model with the true reward are calculated at the end of training and saved in the .csv file
 
-Simply run `plot_correlations.py` with the right parameters in the main function.
-Initially, set 'corrs_from_file' to False; after each run that is run this way, the program will run `calc_correlations` (which take time to run) will be saved in a JSON file.
-Afterwards, the program will attempt to plot the correlations with `plot_correlations`; if 'corrs_from_file' is True, then the cached correlations file will be used.
-
+Simply run  e.g.:  
+`python plot_correlations.py --rm_csv_path reward_models/rm_infos_NEW_RUN.csv --env_name fruitbot` 
 
 ---
 
