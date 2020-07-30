@@ -4,14 +4,15 @@ from itertools import product
 
 parser = argparse.ArgumentParser(description='Experiments parameters')
 
-parser.add_argument('--env_name', type=str, nargs = '+', default=['starpilot'])
-parser.add_argument('--distribution_mode', type=str, nargs = '+',  default=['easy'],
-    choices=["easy", "hard", "exploration", "memory", "extreme"])
-parser.add_argument('--num_dems', type=int, nargs = '+', default=[15])
-parser.add_argument('--num_seeds', type = int, default=5, help="number of random seed for  each experiment")
-parser.add_argument('--max_return',type=float , default = [1.0], nargs = '+', 
-                        help = 'Maximum return of the provided demonstrations as a fraction of max available return')
-parser.add_argument('--sequential', nargs = '+', type = int, default=[0])  
+parser.add_argument('--env_name', type=str, nargs='+', default=['starpilot'])
+parser.add_argument('--distribution_mode', type=str, nargs='+', default=['easy'],
+                    choices=["easy", "hard", "exploration", "memory", "extreme"])
+parser.add_argument('--num_dems', type=int, nargs='+', default=[15])
+parser.add_argument('--num_seeds', type=int, default=5, help="number of random seed for  each experiment")
+parser.add_argument('--max_return', type=float, default=[1.0], nargs='+',
+                    help='Maximum return of the provided demonstrations \
+                     as a fraction of max available return')
+parser.add_argument('--sequential', nargs='+', type=int, default=[0])
 
 parser.add_argument('--max_num_epochs', default=None)
 parser.add_argument('--epoch_size', default=None)
@@ -20,7 +21,7 @@ parser.add_argument('--demo_folder', default=None)
 parser.add_argument('--save_name', default=None)
 parser.add_argument('--patience', default=None)
 
-parser.add_argument('--config', default=None, type=str)  
+parser.add_argument('--config', default=None, type=str)
 
 args = parser.parse_args()
 
@@ -29,8 +30,8 @@ n_exps = 0
 print('Running experiments')
 
 for (seed, env_name, mode, num_dems, max_return, sequential) in \
-product(range(args.num_seeds),args.env_name, args.distribution_mode,
-		args.num_dems, args.max_return, args.sequential):
+    product(range(args.num_seeds), args.env_name, args.distribution_mode,
+            args.num_dems, args.max_return, args.sequential):
 
     n_exps += 1
 
@@ -62,7 +63,7 @@ product(range(args.num_seeds),args.env_name, args.distribution_mode,
 
     command = ' '.join(command)
 
-    #subprocess.call(f'echo Running: {command}', shell=True)
+    print(f'Running:\n{command}')
 
     subprocess.call(command, shell=True)
 

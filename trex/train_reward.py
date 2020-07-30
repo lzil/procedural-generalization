@@ -4,13 +4,17 @@
 import numpy as np
 import csv
 import copy
+import glob
 import pickle
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import tensorflow as tf
+import pandas as pd
 
-import os, sys, glob
+import os
+import sys
+
 import random
 from shutil import copy2
 import argparse
@@ -163,14 +167,18 @@ class RewardTrainer:
     # Train the network
     def learn_reward(self, train_set, val_set, test_set, test_dems):
         loss_criterion = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(self.net.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
+        optimizer = optim.Adam(self.net.parameters(), lr=self.args.lr,
+                               weight_decay=self.args.weight_decay)
 
-        max_val_acc = 0 
+        max_val_acc = 0
         eps_no_max = 0
 
-        with open (self.args.debug_csv, 'a') as csvfile:
-            writer = csv.writer(csvfile, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-            writer.writerow(['n_train_samples','train_acc', 'train_loss', 'val_acc', 'val_loss', 'test_acc', 'test_loss', 'pearson', 'spearman'])
+        with open(self.args.debug_csv, 'a') as csvfile:
+            writer = csv.writer(csvfile, delimiter=',', quotechar='|',
+                                quoting=csv.QUOTE_MINIMAL)
+            writer.writerow(['n_train_samples', 'train_acc', 'train_loss',
+                             'val_acc', 'val_loss', 'test_acc', 'test_loss',
+                             'pearson', 'spearman'])
 
             for epoch in range(self.args.max_num_epochs):
                 epoch_loss = 0
@@ -186,7 +194,7 @@ class RewardTrainer:
 
                     optimizer.zero_grad()
 
-                    #forward + backward + optimize
+                    # forward + backward + optimize
                     outputs, abs_rewards = self.net.forward(ti, tj)
 
                     reward_list.append(outputs[0].cpu().item())
@@ -207,7 +215,8 @@ class RewardTrainer:
 
                 epoch_loss /= self.args.epoch_size
                 train_acc, train_loss = self.calc_accuracy(train_set[:1000])
-                val_acc, val_loss = self.calc_accuracy(val_set[:1000]) #keep validation set to 1000
+                # keep validation set to 1000
+                val_acc, val_loss = self.calc_accuracy(val_set[:1000])
                 test_acc, test_loss = self.calc_accuracy(test_set)
                 pearson, spearman = get_corr_with_ground(test_dems, self.net)
 
@@ -231,7 +240,8 @@ class RewardTrainer:
                 # Early stopping
                 if eps_no_max >= self.args.patience:
                     logging.info(f'Early stopping after epoch {epoch}')
-                    self.net.load_state_dict(self.best_model)  #loading the model with the best validation accuracy
+                    # loading the model with the best validation accuracy
+                    self.net.load_state_dict(self.best_model)
                     break
 
         logging.info("finished training")
@@ -247,7 +257,7 @@ class RewardTrainer:
         criterion = nn.CrossEntropyLoss()
         num_correct = 0.
         total_loss = 0.
-        
+
         with torch.no_grad():
             for [traj_i, traj_j], label in data:
                 ti = torch.from_numpy(traj_i).float().to(self.device)
@@ -278,28 +288,28 @@ class RewardTrainer:
     def predict_traj_return(self, traj):
         return sum(self.predict_reward_sequence(traj))
 
- 
+
 def parse_config():
     parser = argparse.ArgumentParser(description='Default arguments to initialize and load the model and env')
     parser.add_argument('-c', '--config', type=str, default=None)
 
     parser.add_argument('--env_name', type=str, default='fruitbot')
     parser.add_argument('--distribution_mode', type=str, default='easy',
-        choices=["easy", "hard", "exploration", "memory", "extreme"])
-    parser.add_argument('--seed', type = int, help="random seed for experiments")
-    parser.add_argument('--sequential', type = int, default = 0, 
-        help = '0 means not sequential, any other number creates sequential env with start_level = args.sequential')
+                        choices=["easy", "hard", "exploration", "memory", "extreme"])
+    parser.add_argument('--seed', type=int, help="random seed for experiments")
+    parser.add_argument('--sequential', type=int, default=0,
+                        help='0 means not sequential, any other number creates sequential env with start_level = args.sequential')
 
-    parser.add_argument('--num_dems',type=int, default = 12 , help = 'Number off demonstrations to train on')
-    parser.add_argument('--max_return',type=float , default = 1.0, 
-                        help = 'Maximum return of the provided demonstrations as a fraction of max available return')
+    parser.add_argument('--num_dems',type=int, default=12, help='Number off demonstrations to train on')
+    parser.add_argument('--max_return',type=float, default=1.0,
+                        help='Maximum return of the provided demonstrations as a fraction of max available return')
     parser.add_argument('--num_snippets', default=50000, type=int, help="number of short subtrajectories to sample")
     parser.add_argument('--min_snippet_length', default=20, type=int, help="Min length of tracjectory for training comparison")
     parser.add_argument('--max_snippet_length', default=100, type=int, help="Max length of tracjectory for training comparison")
-    
-    parser.add_argument('--epoch_size', default = 2000, type=int, help ='How often to measure validation accuracy')
-    parser.add_argument('--max_num_epochs', type = int, default = 50, help = 'Number of epochs for reward learning')
-    parser.add_argument('--patience', type = int, default = 6, help = 'early stopping patience')
+
+    parser.add_argument('--epoch_size', default=2000, type=int, help='How often to measure validation accuracy')
+    parser.add_argument('--max_num_epochs', type=int, default=50, help='Number of epochs for reward learning')
+    parser.add_argument('--patience', type=int, default=6, help='early stopping patience')
 
     parser.add_argument('--lr', type=float, default=5e-5, help='reward model learning rate')
     parser.add_argument('--lam_l1', type=float, default=0, help='l1 penalization of abs value of output')
@@ -314,11 +324,11 @@ def parse_config():
     # hopeully get rid of this
     parser.add_argument('--demo_csv', nargs='+', default=['demos/demo_infos.csv'], help='path to csv files with demo info')
 
-    parser.add_argument('--save_dir', default='trex/reward_models', help='where the models and csv get stored')
+    parser.add_argument('--save_dir', default='reward_models', help='where the models and csv get stored')
     parser.add_argument('--save_name', default=None, help='suffix to the name of the csv/file folder for saving')
-    
+
     args = parser.parse_args()
-    
+
     if args.config is not None:
         args = add_yaml_args(args, args.config)
 
@@ -331,12 +341,12 @@ def store_model(state_dict_path, max_return, max_length, accs, args):
     info_path = os.path.join(args.save_dir, csv_name)
 
     if not os.path.exists(info_path):
-        with open(info_path, 'w') as f: 
-            rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        with open(info_path, 'w') as f:
+            rew_writer = csv.writer(f, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
             rew_writer.writerow(['rm_id', 'method', 'env_name', 'mode',
                                  'num_dems', 'max_return', 'max_length',
-                                'sequential', 'train_acc','val_acc',
-                                'test_acc','pearson','spearman'])
+                                 'sequential', 'train_acc', 'val_acc',
+                                 'test_acc', 'pearson', 'spearman'])
 
     files_name = 'model_files' if args.save_name is None else f'model_files_{args.save_name}'
     model_dir = os.path.join(args.save_dir, files_name)
@@ -346,16 +356,16 @@ def store_model(state_dict_path, max_return, max_length, accs, args):
     copy2(state_dict_path, save_path)
 
     train_acc, val_acc, test_acc, pearson, spearman = accs
-    with open(info_path, 'a') as f: 
-        rew_writer = csv.writer(f, delimiter = ',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+    with open(info_path, 'a') as f:
+        rew_writer = csv.writer(f, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         rew_writer.writerow([args.rm_id, 'trex', args.env_name, args.distribution_mode,
                             args.num_dems, max_return, max_length, args.sequential,
                             train_acc, val_acc, test_acc, pearson, spearman])
 
 
 def get_file(file_name):
-    #searches for the file with the given name in all subfolders,
-    #then loads it and returns 
+    # searches for the file with the given name in all subfolders,
+    # then loads it and returns
     path = glob.glob('./**/'+file_name, recursive=True)[0]
     demo = pickle.load(open(path, 'rb'))
 
@@ -369,9 +379,9 @@ def main():
     # do seed creation before log creation
     print('Setting up logging and seed creation', flush=True)
     if args.seed:
-        seed = args.seed 
+        seed = args.seed
     else:
-        seed = random.randint(1e6,1e7-1)
+        seed = random.randint(1e6, 1e7-1)
         args.seed = seed
     rm_id = '_'.join([str(seed)[:3], str(seed)[3:]])
 
@@ -391,12 +401,11 @@ def main():
     logging.info(f'Reward model id: {rm_id}')
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
-    torch.backends.cudnn.deterministic=True
+    torch.backends.cudnn.deterministic = True
     np.random.seed(seed)
     tf.set_random_seed(seed)
     random.seed(seed)
-    
-    
+
     # here is where the T-REX procedure begins
     constraints = {
         'env_name': args.env_name,
@@ -477,13 +486,13 @@ def main():
         test_dems.append(get_file(dem + '.demo'))
 
     test_set, true_test_acc = create_dataset(
-        dems = test_dems,
-        num_snippets = 1000,
-        min_snippet_length = args.min_snippet_length,
-        max_snippet_length = args.max_snippet_length,
-        verbose = False,
-        use_snippet_rewards = args.use_snippet_rewards,
-        use_clip_heuristic = args.use_clip_heuristic
+        dems=test_dems,
+        num_snippets=1000,
+        min_snippet_length=args.min_snippet_length,
+        max_snippet_length=args.max_snippet_length,
+        verbose=False,
+        use_snippet_rewards=args.use_snippet_rewards,
+        use_clip_heuristic=args.use_clip_heuristic
     )
 
     logging.info(f'GT reward test set accuracy = {true_test_acc}')
@@ -499,13 +508,13 @@ def main():
     with torch.no_grad():
         logging.info('_____TRAIN set_____')
         logging.info('true     |predicted')
-        for demo in sorted(dems[:20], key = lambda x: x['return']):
+        for demo in sorted(dems[:20], key=lambda x: x['return']):
             logging.info(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}")
 
     with torch.no_grad():
         logging.info('______TEST set_____')
         logging.info('true     |predicted')
-        for demo in sorted(test_dems[:20], key = lambda x: x['return']):
+        for demo in sorted(test_dems[:20], key=lambda x: x['return']):
             logging.info(f"{demo['return']:<9.2f}|{trainer.predict_traj_return(demo['observations']):>9.2f}") 
 
     logging.info(f"Final train set accuracy {trainer.calc_accuracy(train_set[:5000])[0]}")

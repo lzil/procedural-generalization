@@ -13,10 +13,11 @@ conda activate trex-procgen
 pip install https://github.com/openai/baselines/archive/9ee399f5b20cd70ac0a871927a6cf043b478193f.zip  
 ```
 
-Then download the pre-generated demo's [here](https://drive.google.com/drive/folders/1DjGpKnXip6WBXuHzajt1FaiWGU7s4338?usp=sharing)  
+Then download the pre-generated demo's [here](https://drive.google.com/drive/folders/1DjGpKnXip6WBXuHzajt1FaiWGU7s4338?usp=sharing) and put into `trex/demos` folder  
 Alternatively you can generate fresh demos yourself, using e.g.  
 ```python gen_demos.py  --models_dir experts/fruitbot/easy/checkpoints --env_name fruitbot --name fruitbot_sequential --num_dems 200```
 
+The demos are generated using expert policies located in the [experts](experts) folder
 
 ---
 

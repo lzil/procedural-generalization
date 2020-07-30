@@ -3,11 +3,9 @@ import os
 import tensorflow as tf
 
 import yaml
-import logging
 import time
 import json
 import csv
-import pandas as pd
 
 
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
@@ -51,7 +49,6 @@ def log_this(config, log_dir, log_name=None, checkpoints=True):
     with open(path_config, 'w', encoding='utf-8') as f:
         json.dump(vars(config), f, indent=4)
         print(f'Config file saved to: {path_config}', flush=True)
-    
     print('===============\n', flush=True)
     # major TODO to change this to be more widely usable and not specific to applications
     if checkpoints:
@@ -93,6 +90,7 @@ def retain_row(row, constraints):
             return False
     return True
 
+
 # helper function to get the rows in a csv that matter
 def filter_csv(path, constraints, max_rows=1000000):
     with open(path) as master:
@@ -121,14 +119,4 @@ def filter_csv_pandas(infos, constraints):
         # using > here instead of >=
         infos = infos[infos['length'] > constraints['demo_min_len']]
     return infos
-
-
-
-# https://stackoverflow.com/questions/19932130/iterate-through-folders-then-subfolders-and-print-filenames-with-path-to-text-f
-def list_files(dir):
-    r = []
-    for root, dirs, files in os.walk(dir):
-        for name in files:
-            r.append(os.path.join(root, name))
-    return r
 
