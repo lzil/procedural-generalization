@@ -55,35 +55,49 @@ The [spearman](https://en.wikipedia.org/wiki/Spearman%27s_rank_correlation_coeff
 Simply run  e.g.:  
 `python plot_correlations.py --rm_csv_path reward_models/rm_infos_NEW_RUN.csv --env_name fruitbot` 
 
-The sample output will look like this:
+The output may look like this:
 
 ![Starpilot Correlations](figures/starpilot_corrs.png)
 
 
 Baselines are computed by measuring correlation with the reward model that assings +1 reward to every state
 
+### Visualizing the reward model predictions
+
+To plot the predicted reward v.s. the true reward run e.g.:  
+`python plot_reward_predictions.py --env_name starpilot --reward_model 100_1999`
+
+This will pick 12 random demos, and produce plots of true cumulative reward vs predicted cumulative reward, which can be very useful to interpret the learned reward model
+The rewards are normalized to have the same scale
+
+Sample plot:  
+![Starpilot_predictions](figures/reward_predicitons.png)
 
 ---
 
-## recording and watching videos
 
-### policy
+## Training the policy with the learned reward
 
-Tesing a trained agent saved in `policy.parameters` can be done with e.g.:  
-`python test_policy.py --load_path policy.parameters --env_name Name`
+Just use `train_policy.py` e.g.:  
+`python train_policy.py --env_name starpilot --rm_id 100_1999`
+
+
+To test a trained policy run e.g.:  
+`python test_policy.py --load_path experts/coinrun/easy/checkpoints/00090 --env_name coinrun`
 
 You can also record a video of the trained agent with e.g.:  
-`python rec_video.py --load_path policy.parameters --env_name Name`
+`python visualize_policy.py --load_path experts/coinrun/easy/checkpoints/00090 --env_name coinrun`
 
 Additional argumets are available
 
+### Visualizing demos
 
-### demonstration
+To visualize one of the stored demos run:  
+`python visualize_demo.py 1_203_931_872`  
+and it will appear in `Videos/demo_1_203_931_872.mp4`.
 
-Produce a demonstration file with
-`python visualize_demo <demo_path>`
-and it will appear in `videos/demo_<demo_id>.mp4`.
 
-Slight problem: when you run it, it prints a lot of stuff.
-I haven't been able to figure out how to get rid of it - it may be a Mac thing.
-But the produced video is unaffected.
+
+
+
+

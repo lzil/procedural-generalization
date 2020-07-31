@@ -11,15 +11,15 @@ import pandas as pd
 from helpers.utils import get_id, filter_csv_pandas
 
 mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=["mediumspringgreen", "salmon"]) 
-mpl.rcParams["font.family"] = "helvetica"
+# mpl.rcParams["font.family"] = "helvetica"
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--env_name', default='starpilot')
 parser.add_argument('--mode', default='easy')
 parser.add_argument('--sequential', type = int, default=0)
 
-parser.add_argument('--demo_csv', default='trex/demos/demo_infos.csv')
-parser.add_argument('--reward_csv', default='trex/reward_models/rm_infos.csv')
+parser.add_argument('--demo_csv', default='demos/demo_infos.csv')
+parser.add_argument('--reward_csv', default='reward_models/rm_infos.csv')
 parser.add_argument('--reward_model', type = str)
 
 args = parser.parse_args()
@@ -90,8 +90,8 @@ fig.text(0.06, 0.5, 'cumulative reward', ha='center', va='center', rotation='ver
 handles, labels = ax.get_legend_handles_labels()
 fig.legend(handles, labels, loc='center right')
 if rm_info is not None:
-    fig.suptitle(f'reward model {rm_id}: {args.env_name}, {args.mode}, {args.sequential}; {rm_info.num_dems} dems', size='xx-large', weight='bold')
+    fig.suptitle(f'reward model {rm_id}: {args.env_name}, {args.mode}, {"seq" if args.sequential else "non-seq"}; {rm_info.num_dems} dems', size='xx-large', weight='bold')
 else:
-    fig.suptitle(f'reward model {rm_id}: {args.env_name}, {args.mode}, {args.sequential}', size='xx-large', weight='bold')
+    fig.suptitle(f'reward model {rm_id}: {args.env_name}, {args.mode}, {"seq" if args.sequential else "non-seq"}', size='xx-large', weight='bold')
 
 plt.show()

@@ -66,7 +66,7 @@ def main():
     args = parse_config()
 
     # to log the results consistently
-    LOG_DIR = os.path.join(args.log_dir, str(args.num_levels), args.env_name)
+    LOG_DIR = os.path.join(args.log_dir, args.env_name, args.distribution_mode)
     run_dir, ckpt_dir, run_id = log_this(args, LOG_DIR, args.log_name)
 
     # mpi work

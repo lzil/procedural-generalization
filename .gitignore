@@ -21,6 +21,3 @@ experts/
 
 *slurm*
 
-debug_train_reward.py
-epic.py
-baseline_reward.py

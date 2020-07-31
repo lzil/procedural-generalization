@@ -55,7 +55,7 @@ if __name__ == '__main__':
     parser.add_argument('--video_length', type=int, default=1000,
                         help='video length measured in agent steps')
     parser.add_argument('--num_screens', type=int, default=1, help='Number of screens in video')
-    parser.add_argument('--load_path', type=str, default='baseline_agent/sample/checkpoints/coinrun_03000',
+    parser.add_argument('--load_path', type=str, default='experts/coinrun/easy/checkpoints/00090',
                         help='path to the model')
 
     args, unknown = parser.parse_known_args()
@@ -75,7 +75,7 @@ if __name__ == '__main__':
 
     # this wrapper from openai-baselines records a video
     video_env_fn = lambda: VecVideoRecorder(venv_fn(),
-                                            directory="Video",
+                                            directory="Videos",
                                             record_video_trigger=lambda x: x == 1,
                                             video_length=args.video_length)
 

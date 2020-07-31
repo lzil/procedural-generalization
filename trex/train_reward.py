@@ -319,7 +319,7 @@ def parse_config():
     parser.add_argument('--use_clip_heuristic', type = bool, default = True, help='always pick later part of a better trajectory when generating clips')
 
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
-    parser.add_argument('--log_dir', default='LOGS', help='general logs directory')
+    parser.add_argument('--log_dir', default='LOGS/rm_logs', help='general logs directory')
 
     # hopeully get rid of this
     parser.add_argument('--demo_csv', nargs='+', default=['demos/demo_infos.csv'], help='path to csv files with demo info')

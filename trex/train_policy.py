@@ -1,5 +1,6 @@
 import os
 import sys
+import glob
 
 import tensorflow as tf
 import torch
@@ -35,9 +36,9 @@ def parse_config():
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--load_path', type=str, default=None)
-    parser.add_argument('--log_dir', type=str, default='trex/policy_logs')
+    parser.add_argument('--log_dir', type=str, default='LOGS/policy_logs')
     parser.add_argument('--log_name', type=str, default='')
-    parser.add_argument('--reward_model_path', type = str, help="name and location for learned model params, e.g. ./learned_models/breakout.params")
+    parser.add_argument('--rm_id', type = str, help="reward model id, e.g. 109_8714")
 
     # logs every num_envs * nsteps
     parser.add_argument('--log_interval', type=int, default=5)
@@ -75,10 +76,6 @@ def main():
 
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
-    print('--> mpi stuff starting')
-    print('comm ', comm)
-    print('rank ', rank)
-    print('--> mpi stuff ending')
 
     is_test_worker = False
 
@@ -107,7 +104,8 @@ def main():
     # load pretrained network
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     net = RewardNet().to(device)
-    net.load_state_dict(torch.load(args.reward_model_path, map_location=torch.device(device)))
+    rm_path = glob.glob('./**/'+ args.rm_id + '.rm', recursive=True)[0]
+    net.load_state_dict(torch.load(rm_path, map_location=torch.device(device)))
 
     # use batch reward prediction function instead of the ground truth reward function
     rew_func = lambda x: net.predict_batch_rewards(x)

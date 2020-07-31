@@ -12,7 +12,7 @@ from correlations import retain_row
 
 
 def main():
-    demo_csv = 'trex/demos/demo_infos2.csv'
+    demo_csv = 'demos/demo_infos.csv'
 
     # use sequential constraint
     constraints = {

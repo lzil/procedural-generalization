@@ -9,14 +9,8 @@ import cv2
 from helpers.utils import get_id
 from train_reward import get_file
 
-vid_folder = 'videos'
+vid_folder = 'Videos'
 os.makedirs(vid_folder, exist_ok=True)
-
-# # send all the output from cv2 to a log file
-# os.makedirs('logs', exist_ok=True)
-# f = open('logs/log_visualize_demo.log', 'a')
-# sys.stdout = f
-# sys.stderr = f
 
 # only argument is demo path
 parser = argparse.ArgumentParser()
