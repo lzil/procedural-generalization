@@ -40,7 +40,7 @@ To train reward for the `fruitbot` given 200 demos run:
 Many algorithm hyperparameters could be specified from the command line   
 Check `python train_reward.py --help` for the full list
 
-To run many experiments use `run_experiments.py`. For example:  
+To run several experiments at a time with different hyperparameters use `run_experiments.py`. For example:  
 `python run_experiments.py --env_name starpilot fruitbot coinrun --num_dems 30 100 200 500 1000 --num_seeds 5 --save_name NEW_RUN`  
 will run 3(envirionments) x 5(different # of demos) x 5(random seeds) = 75 experiments and save the details of the reward models to `reward_models/rm_infos_NEW_RUN.csv` file
 
@@ -50,10 +50,18 @@ will run 3(envirionments) x 5(different # of demos) x 5(random seeds) = 75 exper
 
 We can evaluate the quality of a given model with a simple metric: the correlation between the real return of a trajectory and the predicted return from the reward model.
 
-The spearman and pearson correlations of the learned reward model with the true reward are calculated at the end of training and saved in the .csv file
+The [spearman](https://en.wikipedia.org/wiki/Spearman%27s_rank_correlation_coefficient) and [pearson](https://en.wikipedia.org/wiki/Pearson_correlation_coefficient) correlations of the learned reward model with the true reward are calculated at the end of training and saved in the .csv file
 
 Simply run  e.g.:  
 `python plot_correlations.py --rm_csv_path reward_models/rm_infos_NEW_RUN.csv --env_name fruitbot` 
+
+The sample output will look like this:
+
+![Starpilot Correlations](figures/starpilot_corrs.png)
+
+
+Baselines are computed by measuring correlation with the reward model that assings +1 reward to every state
+
 
 ---
 
