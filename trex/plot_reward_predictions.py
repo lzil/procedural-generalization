@@ -20,7 +20,7 @@ parser.add_argument('--sequential', type = int, default=0)
 
 parser.add_argument('--demo_csv', default='demos/demo_infos.csv')
 parser.add_argument('--reward_csv', default='reward_models/rm_infos.csv')
-parser.add_argument('--rm_id', type = str, 'reward model id')
+parser.add_argument('--rm_id', type =str, help='reward model id')
 
 args = parser.parse_args()
 
@@ -43,7 +43,7 @@ demo_infos = demo_infos[demo_infos['set_name'] == 'test']
 # choose 12 of the demos at random to show
 dems = []
 for demo_id in np.random.choice(demo_infos['demo_id'], 12):
-    dems.append((f_name, get_demo(demo_id)))
+    dems.append((demo_id, get_demo(demo_id)))
 
 
 # get info about the reward model if csv is provided
