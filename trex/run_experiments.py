@@ -13,6 +13,8 @@ parser.add_argument('--max_return', type=float, default=[1.0], nargs='+',
                     help='Maximum return of the provided demonstrations \
                      as a fraction of max available return')
 parser.add_argument('--sequential', nargs='+', type=int, default=[0])
+parser.add_argument('--weight_decay', type=float, default=[0.005], nargs='+',
+                    help='Weight decay used for training')
 
 parser.add_argument('--max_num_epochs', default=None)
 parser.add_argument('--epoch_size', default=None)
@@ -29,9 +31,9 @@ n_exps = 0
 
 print('Running experiments')
 
-for (seed, env_name, mode, num_dems, max_return, sequential) in \
+for (seed, env_name, mode, num_dems, max_return, sequential, weight_decay) in \
     product(range(args.num_seeds), args.env_name, args.distribution_mode,
-            args.num_dems, args.max_return, args.sequential):
+            args.num_dems, args.max_return, args.sequential, args.weight_decay):
 
     n_exps += 1
 
@@ -42,6 +44,7 @@ for (seed, env_name, mode, num_dems, max_return, sequential) in \
     command.append(f'--num_dems={num_dems}')
     command.append(f'--max_return={max_return}')
     command.append(f'--sequential={sequential}')
+    command.append(f'--weight_decay={weight_decay}')
 
     if args.config is not None:
         command.append(f'--config={args.config}')

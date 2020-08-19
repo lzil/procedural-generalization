@@ -2,6 +2,8 @@
 
 Testing the generalization properties of [T-REX](https://github.com/hiwonjoon/ICML2019-TREX/blob/master/atari/LearnAtariReward.py) algorithm on [Procgen](https://github.com/openai/procgen) suite of environments
 
+The code is havily adapted from the repositories above
+
 ## Setup
 
 To setup the environment use the following commands:
@@ -15,10 +17,11 @@ pip install https://github.com/openai/baselines/archive/9ee399f5b20cd70ac0a87192
 
 Then download the pre-generated demo's [here](https://drive.google.com/drive/folders/1DjGpKnXip6WBXuHzajt1FaiWGU7s4338?usp=sharing) and put into `trex/demos` folder 
 
-To generate fresh demos yourself, use e.g.  
+To generate fresh demos yourself, you'll need to download the [expert policies](https://drive.google.com/drive/folders/1-LnTGdBjuIIBPo7BIu1uwB7K9qlAMvJH?usp=sharing) and put them into `trex/experts` folder. Then execute e.g.  
 ```python gen_demos.py  --models_dir experts/fruitbot/easy/checkpoints --env_name fruitbot --name fruitbot_sequential --num_dems 200```  
-After downloading the [expert policies](https://drive.google.com/drive/folders/1-LnTGdBjuIIBPo7BIu1uwB7K9qlAMvJH?usp=sharing) and putting them into `trex/experts` folder  
-You can also train experts yourself using the code available in the [train-procgen repo](https://github.com/openai/train-procgen) as we did
+
+You can train your own experts if you so wish using e.g.  
+`python train_policy.py --env_name starpilot --distribution_mode easy`
 
 
 ## Training reward models with T-REX algorithm

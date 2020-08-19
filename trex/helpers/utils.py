@@ -1,15 +1,21 @@
 import os
-
+import glob
+import pickle 
 import tensorflow as tf
+import numpy as np
+from shutil import copy2
 
 import yaml
 import time
 import json
 import csv
 
+from scipy.stats import pearsonr
+from scipy.stats import spearmanr
 
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 
 # use yaml config files; note what is actually set via the config file
 def add_yaml_args(args, config_file):
@@ -27,36 +33,21 @@ def add_yaml_args(args, config_file):
 
 
 # produce run id and create log directory
-def log_this(config, log_dir, log_name=None, checkpoints=True):
-    run_id = str(int(time.time() * 100))[-7:]
+def log_this(config, log_dir, rm_id=''):
+    run_id = time.strftime("%Y%m%d_%H%M%S")
     print('\n=== Logging ===', flush=True)
-    print(f'Run id: {run_id} with name {log_name}', flush=True)
-
-    if log_name is None or len(log_name) == 0:
-        log_name = run_id
-    run_dir = os.path.join(log_dir, log_name)
+    print(f'Run id: {run_id}', flush=True)
+    run_dir = os.path.join(log_dir, rm_id, run_id)
     os.makedirs(run_dir, exist_ok=True)
-
-    if checkpoints:
-        checkpoint_dir = os.path.join(run_dir, f'checkpoints_{run_id}')
-        os.makedirs(checkpoint_dir, exist_ok=True)
-
-    log_path = os.path.join(run_dir, f'{run_id}.log')
-
     print(f'Logging to {run_dir}', flush=True)
-    # might want to send stdout here later too
-    path_config = os.path.join(run_dir, f'config_{run_id}.json')
+    config.run_dir = run_dir
+
+    path_config = os.path.join(run_dir, 'config.json')
     with open(path_config, 'w', encoding='utf-8') as f:
         json.dump(vars(config), f, indent=4)
-        print(f'Config file saved to: {path_config}', flush=True)
     print('===============\n', flush=True)
-    # major TODO to change this to be more widely usable and not specific to applications
-    if checkpoints:
-        # used for reward model training
-        return log_path, checkpoint_dir, run_id
-    else:
-        # used for correlations
-        return run_dir, run_id
+
+    return run_dir
 
 
 # extract id from the path. a bit hacky but should get the job done
@@ -70,7 +61,7 @@ def get_id(path):
 
 # helper function for filtering rows in a csv
 def retain_row(row, constraints):
-    for k,v in constraints.items():
+    for k, v in constraints.items():
         # respect maximum return constraints
         if 'demo_max_return' in constraints:
             if float(row['return']) > float(constraints['demo_max_return']):
@@ -105,6 +96,7 @@ def filter_csv(path, constraints, max_rows=1000000):
 
     return rows
 
+
 # helper function using pandas
 def filter_csv_pandas(infos, constraints):
     if 'env_name' in constraints:
@@ -120,3 +112,77 @@ def filter_csv_pandas(infos, constraints):
         infos = infos[infos['length'] > constraints['demo_min_len']]
     return infos
 
+
+def timeitt(method):
+    def timed(*args, **kw):
+        ts = time.time()
+        result = method(*args, **kw)
+        te = time.time()
+        if 'log_time' in kw:
+            name = kw.get('log_name', method.__name__.upper())
+            kw['log_time'][name] = int((te - ts) * 1000)
+        else:
+            print('time spent by %r  %2.2f ms' %
+                  (method.__name__, (te - ts) * 1000))
+        return result
+    return timed
+
+
+def store_model(state_dict_path, max_return, max_length, accs, args):
+
+    csv_name = 'rm_infos.csv' if args.save_name is None else f'rm_infos_{args.save_name}.csv'
+    info_path = os.path.join(args.save_dir, csv_name)
+
+    if not os.path.exists(info_path):
+        with open(info_path, 'w') as f:
+            rew_writer = csv.writer(f, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+            rew_writer.writerow(['rm_id', 'method', 'env_name', 'mode',
+                                 'num_dems', 'max_return', 'max_length',
+                                 'sequential', 'train_acc', 'val_acc',
+                                 'test_acc', 'pearson', 'spearman'])
+
+    files_name = 'model_files' if args.save_name is None else f'model_files_{args.save_name}'
+    model_dir = os.path.join(args.save_dir, files_name)
+    os.makedirs(model_dir, exist_ok=True)
+
+    save_path = os.path.join(model_dir, args.rm_id + '.rm')
+    copy2(state_dict_path, save_path)
+
+    train_acc, val_acc, test_acc, pearson, spearman = accs
+    with open(info_path, 'a') as f:
+        rew_writer = csv.writer(f, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        rew_writer.writerow([args.rm_id, 'trex', args.env_name, args.distribution_mode,
+                            args.num_dems, max_return, max_length, args.sequential,
+                            train_acc, val_acc, test_acc, pearson, spearman])
+
+
+def get_demo(demo_id):
+    # searches for the file with the given name in all subfolders,
+    # then loads it and returns
+    path = glob.glob('./**/' + demo_id + '.demo', recursive=True)[0]
+    demo = pickle.load(open(path, 'rb'))
+
+    return demo
+
+
+def get_corr_with_ground(demos, net, verbose=False, baseline_reward=False):
+    rs = []
+    for dem in demos:
+        if baseline_reward:
+            r_prediction = len(dem['observations'])
+        else:
+            r_prediction = np.sum(net.predict_batch_rewards(dem['observations']))
+
+        r_true = dem['return']
+
+        rs.append((r_true, r_prediction))
+
+    # calculate correlations and print them
+    rs_by_var = list(zip(*rs))
+    pearson_r, pearson_p = pearsonr(rs_by_var[0], rs_by_var[1])
+    spearman_r, spearman_p = spearmanr(rs)
+
+    if verbose:
+        print(f'(pearson_r, spearman_r): {(pearson_r, spearman_r)}')
+
+    return (pearson_r, spearman_r)

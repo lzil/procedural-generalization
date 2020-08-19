@@ -4,11 +4,11 @@ import sys
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
-from train_reward import RewardNet, get_file
+from train_reward import RewardNet
 import torch
 import pandas as pd
 
-from helpers.utils import get_id, filter_csv_pandas
+from helpers.utils import get_id, filter_csv_pandas, get_demo
 
 mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=["mediumspringgreen", "salmon"]) 
 # mpl.rcParams["font.family"] = "helvetica"
@@ -20,14 +20,13 @@ parser.add_argument('--sequential', type = int, default=0)
 
 parser.add_argument('--demo_csv', default='demos/demo_infos.csv')
 parser.add_argument('--reward_csv', default='reward_models/rm_infos.csv')
-parser.add_argument('--reward_model', type = str)
+parser.add_argument('--rm_id', type = str, 'reward model id')
 
 args = parser.parse_args()
 
-rm_id = get_id(args.reward_model)
 
 # find the reward model and load it
-path = glob.glob('./**/'+ rm_id + '.rm', recursive=True)[0]
+path = glob.glob('./**/'+ args.rm_id + '.rm', recursive=True)[0]
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 net = RewardNet().to(device)
 net.load_state_dict(torch.load(path, map_location=torch.device(device)))
@@ -43,17 +42,17 @@ demo_infos = demo_infos[demo_infos['set_name'] == 'test']
 
 # choose 12 of the demos at random to show
 dems = []
-for f_name in np.random.choice(demo_infos['demo_id'], 12):
-    dems.append((f_name, get_file(f_name+'.demo')))
+for demo_id in np.random.choice(demo_infos['demo_id'], 12):
+    dems.append((f_name, get_demo(demo_id)))
 
 
 # get info about the reward model if csv is provided
 rm_info = None
 if args.reward_csv is not None:
     rm_infos = pd.read_csv(args.reward_csv)
-    rm_infos = rm_infos[rm_infos['rm_id'] == rm_id]
+    rm_infos = rm_infos[rm_infos['rm_id'] == args.rm_id]
     if rm_infos.shape[0] == 0:
-        print(f'Reward model {rm_id} not found in given csv.')
+        print(f'Reward model {args.rm_id} not found in given csv.')
     elif rm_infos.shape[0] == 1:
         rm_info = rm_infos.iloc[0]
 
@@ -90,8 +89,8 @@ fig.text(0.06, 0.5, 'cumulative reward', ha='center', va='center', rotation='ver
 handles, labels = ax.get_legend_handles_labels()
 fig.legend(handles, labels, loc='center right')
 if rm_info is not None:
-    fig.suptitle(f'reward model {rm_id}: {args.env_name}, {args.mode}, {"seq" if args.sequential else "non-seq"}; {rm_info.num_dems} dems', size='xx-large', weight='bold')
+    fig.suptitle(f'reward model {args.rm_id}: {args.env_name}, {args.mode}, {"seq" if args.sequential else "non-seq"}; {rm_info.num_dems} dems', size='xx-large', weight='bold')
 else:
-    fig.suptitle(f'reward model {rm_id}: {args.env_name}, {args.mode}, {"seq" if args.sequential else "non-seq"}', size='xx-large', weight='bold')
+    fig.suptitle(f'reward model {args.rm_id}: {args.env_name}, {args.mode}, {"seq" if args.sequential else "non-seq"}', size='xx-large', weight='bold')
 
 plt.show()

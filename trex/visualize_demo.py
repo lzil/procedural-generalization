@@ -1,13 +1,9 @@
-import numpy as np
-import pickle
 import argparse
-import sys
 import os
 
 import cv2
 
-from helpers.utils import get_id
-from train_reward import get_file
+from helpers.utils import get_demo
 
 vid_folder = 'Videos'
 os.makedirs(vid_folder, exist_ok=True)
@@ -17,7 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('demo_id')
 args = parser.parse_args()
 
-demo = get_file(args.demo_id + '.demo')
+demo = get_demo(args.demo_id)
 
 demo_id = demo['demo_id']
 observations = demo['observations']

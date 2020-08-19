@@ -6,8 +6,8 @@ import tensorflow as tf
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-# from baselines.ppo2 import ppo2
-import helpers.baselines_ppo2 as ppo2 # use this for adjusted logging ability
+from baselines.ppo2 import ppo2
+
 from baselines.common.models import build_impala_cnn
 from baselines.common.mpi_util import setup_mpi_gpus
 from procgen import ProcgenEnv
@@ -31,14 +31,15 @@ def parse_config():
     parser.add_argument('-c', '--config', type=str, default=None)
 
     parser.add_argument('--env_name', type=str, default='starpilot')
-    parser.add_argument('--distribution_mode', type=str, default='easy', choices=["easy", "hard", "exploration", "memory", "extreme"])
+    parser.add_argument('--distribution_mode', type=str, default='easy',
+                        choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=0)
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--load_path', type=str, default=None)
-    parser.add_argument('--log_dir', type=str, default='LOGS/policy_logs')
+    parser.add_argument('--log_dir', type=str, default='LOGS/POLICY_LOGS')
     parser.add_argument('--log_name', type=str, default='')
-    parser.add_argument('--rm_id', type = str, help="reward model id, e.g. 109_8714")
+    parser.add_argument('--rm_id', default='', type=str, help="reward model id, e.g. 109_8714")
 
     # logs every num_envs * nsteps
     parser.add_argument('--log_interval', type=int, default=5)
@@ -70,7 +71,7 @@ def parse_config():
 def main():
 
     args = parse_config()
-    run_dir, checkpoint_dir, run_id = log_this(args, args.log_dir, args.log_name)
+    run_dir = log_this(args, args.log_dir, args.rm_id)
 
     test_worker_interval = args.test_worker_interval
 
@@ -87,7 +88,7 @@ def main():
 
     log_comm = comm.Split(1 if is_test_worker else 0, 0)
     format_strs = ['csv', 'stdout'] if log_comm.Get_rank() == 0 else []
-    logger.configure(dir=run_dir, format_strs=format_strs, log_suffix='_' + run_id)
+    logger.configure(dir=run_dir, format_strs=format_strs)
 
     logger.info("creating environment")
 
@@ -101,15 +102,20 @@ def main():
     venv = VecExtractDictObs(venv, "rgb")
     venv = VecMonitor(venv=venv, filename=None, keep_buf=100)
 
-    # load pretrained network
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    net = RewardNet().to(device)
-    rm_path = glob.glob('./**/'+ args.rm_id + '.rm', recursive=True)[0]
-    net.load_state_dict(torch.load(rm_path, map_location=torch.device(device)))
+    if args.rm_id:
+        # load pretrained network
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        net = RewardNet().to(device)
+        rm_path = glob.glob('./**/'+ args.rm_id + '.rm', recursive=True)[0]
+        net.load_state_dict(torch.load(rm_path, map_location=torch.device(device)))
 
-    # use batch reward prediction function instead of the ground truth reward function
-    rew_func = lambda x: net.predict_batch_rewards(x)
-    venv = ProxyRewardWrapper(venv, rew_func)
+        # use batch reward prediction function instead of the ground truth reward function
+        rew_func = lambda x: net.predict_batch_rewards(x)
+        venv = ProxyRewardWrapper(venv, rew_func)
+    else:
+        # true environment rewards will be used
+        pass
+
     venv = VecNormalize(venv=venv, ob=False, use_tf=False)
 
     # do the rest of the training as normal
@@ -147,7 +153,6 @@ def main():
         init_fn=None,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        run_id=run_id,
         load_path = args.load_path,
     )
 

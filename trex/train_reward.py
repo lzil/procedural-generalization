@@ -4,8 +4,6 @@
 import numpy as np
 import csv
 import copy
-import glob
-import pickle
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -16,13 +14,12 @@ import os
 import sys
 
 import random
-from shutil import copy2
 import argparse
 
 import logging
 
-from helpers.utils import *
-from reward_metric import get_corr_with_ground
+from helpers.utils import get_demo, get_corr_with_ground, log_this,\
+                         add_yaml_args, store_model, filter_csv_pandas
 
 sys.path.append('../')
 
@@ -173,7 +170,7 @@ class RewardTrainer:
         max_val_acc = 0
         eps_no_max = 0
 
-        with open(self.args.debug_csv, 'a') as csvfile:
+        with open(self.args.train_log, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter=',', quotechar='|',
                                 quoting=csv.QUOTE_MINIMAL)
             writer.writerow(['n_train_samples', 'train_acc', 'train_loss',
@@ -218,7 +215,9 @@ class RewardTrainer:
                 # keep validation set to 1000
                 val_acc, val_loss = self.calc_accuracy(val_set[:1000])
                 test_acc, test_loss = self.calc_accuracy(test_set)
-                pearson, spearman = get_corr_with_ground(test_dems, self.net)
+                # calculating correlations on the subset
+                # of all test demos to save time
+                pearson, spearman = get_corr_with_ground(test_dems[:100], self.net)
 
                 writer.writerow([epoch*self.args.epoch_size, train_acc, train_loss.item(), val_acc, val_loss.item(), test_acc, test_loss.item(), pearson, spearman])
 
@@ -242,14 +241,17 @@ class RewardTrainer:
                     logging.info(f'Early stopping after epoch {epoch}')
                     # loading the model with the best validation accuracy
                     self.net.load_state_dict(self.best_model)
+                    logging.info('calculating correlations on all of the available test demos')
+                    pearson, spearman = get_corr_with_ground(test_dems, self.net)
+                    accs = (*accs[:3], pearson, spearman)
                     break
 
         logging.info("finished training")
-        return os.path.join(self.args.checkpoint_dir, 'reward_best.pth'), accs
+        return os.path.join(self.args.run_dir, 'reward_best.pth'), accs
 
     # save the final learned model
     def save_model(self):
-        torch.save(self.net.state_dict(), os.path.join(self.args.checkpoint_dir, 'reward_best.pth'))
+        torch.save(self.net.state_dict(), os.path.join(self.args.run_dir, 'reward_best.pth'))
         self.best_model = copy.deepcopy(self.net.state_dict())
 
     # calculate and return accuracy on entire training set
@@ -307,19 +309,19 @@ def parse_config():
     parser.add_argument('--min_snippet_length', default=20, type=int, help="Min length of tracjectory for training comparison")
     parser.add_argument('--max_snippet_length', default=100, type=int, help="Max length of tracjectory for training comparison")
 
-    parser.add_argument('--epoch_size', default=2000, type=int, help='How often to measure validation accuracy')
+    parser.add_argument('--epoch_size', default=1000, type=int, help='How often to measure validation accuracy')
     parser.add_argument('--max_num_epochs', type=int, default=50, help='Number of epochs for reward learning')
-    parser.add_argument('--patience', type=int, default=6, help='early stopping patience')
+    parser.add_argument('--patience', type=int, default=10, help='early stopping patience')
 
     parser.add_argument('--lr', type=float, default=5e-5, help='reward model learning rate')
-    parser.add_argument('--lam_l1', type=float, default=0, help='l1 penalization of abs value of output')
-    parser.add_argument('--weight_decay', type=float, default=0, help='weight decay of updates')
+    parser.add_argument('--lam_l1', type=float, default=0.001, help='l1 penalization of abs value of output')
+    parser.add_argument('--weight_decay', type=float, default=0.005, help='weight decay of updates')
     parser.add_argument('--output_abs', action='store_true', help='absolute value the output of reward model')
     parser.add_argument('--use_snippet_rewards', action='store_true', help='use true rewards instead of demonstration ones')
     parser.add_argument('--use_clip_heuristic', type = bool, default = True, help='always pick later part of a better trajectory when generating clips')
 
     #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
-    parser.add_argument('--log_dir', default='LOGS/rm_logs', help='general logs directory')
+    parser.add_argument('--log_dir', default='LOGS/RM_LOGS', help='general logs directory')
 
     # hopeully get rid of this
     parser.add_argument('--demo_csv', nargs='+', default=['demos/demo_infos.csv'], help='path to csv files with demo info')
@@ -335,42 +337,6 @@ def parse_config():
     return args
 
 
-def store_model(state_dict_path, max_return, max_length, accs, args):
-
-    csv_name = 'rm_infos.csv' if args.save_name is None else f'rm_infos_{args.save_name}.csv'
-    info_path = os.path.join(args.save_dir, csv_name)
-
-    if not os.path.exists(info_path):
-        with open(info_path, 'w') as f:
-            rew_writer = csv.writer(f, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-            rew_writer.writerow(['rm_id', 'method', 'env_name', 'mode',
-                                 'num_dems', 'max_return', 'max_length',
-                                 'sequential', 'train_acc', 'val_acc',
-                                 'test_acc', 'pearson', 'spearman'])
-
-    files_name = 'model_files' if args.save_name is None else f'model_files_{args.save_name}'
-    model_dir = os.path.join(args.save_dir, files_name)
-    os.makedirs(model_dir, exist_ok=True)
-
-    save_path = os.path.join(model_dir, args.rm_id + '.rm')
-    copy2(state_dict_path, save_path)
-
-    train_acc, val_acc, test_acc, pearson, spearman = accs
-    with open(info_path, 'a') as f:
-        rew_writer = csv.writer(f, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        rew_writer.writerow([args.rm_id, 'trex', args.env_name, args.distribution_mode,
-                            args.num_dems, max_return, max_length, args.sequential,
-                            train_acc, val_acc, test_acc, pearson, spearman])
-
-
-def get_file(file_name):
-    # searches for the file with the given name in all subfolders,
-    # then loads it and returns
-    path = glob.glob('./**/'+file_name, recursive=True)[0]
-    demo = pickle.load(open(path, 'rb'))
-
-    return demo
-
 
 def main():
 
@@ -383,22 +349,25 @@ def main():
     else:
         seed = random.randint(1e6, 1e7-1)
         args.seed = seed
-    rm_id = '_'.join([str(seed)[:3], str(seed)[3:]])
+    #Reward model id is derived from the seed
+    args.rm_id = '_'.join([str(seed)[:3], str(seed)[3:]])
 
-    log_path, checkpoint_dir, run_id = log_this(args, args.log_dir, 'rm-' + rm_id)
-    args.rm_id = rm_id
-    args.run_id = run_id
-    args.checkpoint_dir = checkpoint_dir
+    run_dir = log_this(args, args.log_dir, args.rm_id)
+    args.run_dir = run_dir
+    
+    args.log_path = os.path.join(run_dir, 'print_out.txt')
+    args.train_log = os.path.join(run_dir, 'train_log.csv')
+    
 
-    args.debug_csv = os.path.join(args.log_dir, 'rm-' + rm_id, f'debug_rm_{run_id}.csv')
-    args.log_path = log_path
-    logging.basicConfig(format='%(message)s', filename=log_path, level=logging.DEBUG)
+    
+    
+    logging.basicConfig(format='%(message)s', filename=args.log_path, level=logging.DEBUG)
     console = logging.StreamHandler()
     console.setLevel(logging.DEBUG)
     logging.getLogger('').addHandler(console)
 
     logging.info(f'Save name: {args.save_name}')
-    logging.info(f'Reward model id: {rm_id}')
+    logging.info(f'Reward model id: {args.rm_id}')
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
@@ -416,8 +385,8 @@ def main():
 
     for path in args.demo_csv:
         all_rows = pd.read_csv(path)
-        train_rows = filter_csv_pandas(all_rows, {**constraints, **{'set_name': 'train'}})
-        test_rows = filter_csv_pandas(all_rows, {**constraints, **{'set_name': 'test'}})
+        train_rows = filter_csv_pandas(all_rows, {'set_name': 'train', **constraints})
+        test_rows = filter_csv_pandas(all_rows, {'set_name': 'test', **constraints})
 
     logging.info(f'Filtered demos: {len(train_rows)} training demos available, {args.num_dems} requested')
 
@@ -442,7 +411,7 @@ def main():
             #choose random demo and append
             if len(new_seeds) > 0:
                 chosen_seed = np.random.choice(new_seeds, 1).item()
-                dems.append(get_file(chosen_seed + '.demo'))
+                dems.append(get_demo(chosen_seed))
                 seeds.append(chosen_seed)
             high += rew_step
     
@@ -478,15 +447,14 @@ def main():
         )
 
     # acquiring test demos for correlations and test accuracy
-    logging.info('Creating testing set ...')
+    logging.info('Creating test set ...')
     n_test_demos = 100
-    demo_ids_n = np.random.choice(test_rows['demo_id'], n_test_demos)
     test_dems = []
-    for dem in demo_ids_n:
-        test_dems.append(get_file(dem + '.demo'))
+    for dem in test_rows['demo_id']:
+        test_dems.append(get_demo(dem))
 
     test_set, true_test_acc = create_dataset(
-        dems=test_dems,
+        dems=test_dems[:n_test_demos],
         num_snippets=1000,
         min_snippet_length=args.min_snippet_length,
         max_snippet_length=args.max_snippet_length,
