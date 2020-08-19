@@ -54,9 +54,9 @@ spearman_base, _ = spearmanr(filtered_demos['length'], filtered_demos['return'])
 
 
 # ax = means.plot(y='pearson', yerr=stds)
-ax = means.plot(y=['spearman', 'pearson'], yerr=stds, kind = 'bar', capsize=4, figsize = (16,9))
-plt.axhline(y = pearson_base, label= 'pearson baseline', ls='--')
-plt.axhline(y = spearman_base, color = 'salmon', label = 'spearman baseline', ls='--')
+ax = means.plot(y=['spearman', 'pearson'], yerr=stds, kind='bar', capsize=4, figsize=(16, 9))
+plt.axhline(y=pearson_base, label= 'pearson baseline', ls='--')
+plt.axhline(y=spearman_base, color = 'salmon', label = 'spearman baseline', ls='--')
 handles, _ = ax.get_legend_handles_labels()
-plt.legend(handles=handles, labels =['pearson baseline', 'spearman baseline', 'spearman<','pearson'] , )
+plt.legend(handles=handles, labels=['pearson baseline', 'spearman baseline', 'spearman', 'pearson'])
 plt.show()

@@ -1,4 +1,3 @@
-import numpy as np
 import os
 import tensorflow as tf
 
@@ -31,10 +30,10 @@ class VideoRunner:
         self.obs = venv.reset()
 
         for i in range(self.nsteps):
-            if i%100 == 0:
+            if i % 100 == 0:
                 print(f'Recorded {i} steps')
 
-            #getting actions from the model
+            # getting actions from the model
             actions, values, self.states, neglogpacs = self.model.step(self.obs)
 
             # Take actions in env

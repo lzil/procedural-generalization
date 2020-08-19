@@ -266,7 +266,7 @@ class RewardTrainer:
                 tj = torch.from_numpy(traj_j).float().to(self.device)
                 lb = torch.from_numpy(label).to(self.device)
 
-                #forward to get logits
+                # forward to get logits
                 rewards, abs_rewards = self.net(ti, tj)
                 _, pred_label = torch.max(rewards, 0)
                 if pred_label.item() == lb:
@@ -320,13 +320,11 @@ def parse_config():
     parser.add_argument('--use_snippet_rewards', action='store_true', help='use true rewards instead of demonstration ones')
     parser.add_argument('--use_clip_heuristic', type = bool, default = True, help='always pick later part of a better trajectory when generating clips')
 
-    #trex/[folder to save to]/[optional: starting name of all saved models (otherwise just epoch and iteration)]
-    parser.add_argument('--log_dir', default='LOGS/RM_LOGS', help='general logs directory')
+    parser.add_argument('--log_dir', default='LOGS/RM_LOGS', help='Training logs directory')
 
-    # hopeully get rid of this
     parser.add_argument('--demo_csv', nargs='+', default=['demos/demo_infos.csv'], help='path to csv files with demo info')
 
-    parser.add_argument('--save_dir', default='reward_models', help='where the models and csv get stored')
+    parser.add_argument('--save_dir', default='reward_models', help='where the trained models and csv get stored')
     parser.add_argument('--save_name', default=None, help='suffix to the name of the csv/file folder for saving')
 
     args = parser.parse_args()
@@ -335,7 +333,6 @@ def parse_config():
         args = add_yaml_args(args, args.config)
 
     return args
-
 
 
 def main():
@@ -349,18 +346,15 @@ def main():
     else:
         seed = random.randint(1e6, 1e7-1)
         args.seed = seed
-    #Reward model id is derived from the seed
+    # Reward model id is derived from the seed
     args.rm_id = '_'.join([str(seed)[:3], str(seed)[3:]])
 
     run_dir = log_this(args, args.log_dir, args.rm_id)
     args.run_dir = run_dir
-    
+
     args.log_path = os.path.join(run_dir, 'print_out.txt')
     args.train_log = os.path.join(run_dir, 'train_log.csv')
-    
 
-    
-    
     logging.basicConfig(format='%(message)s', filename=args.log_path, level=logging.DEBUG)
     console = logging.StreamHandler()
     console.setLevel(logging.DEBUG)
@@ -392,29 +386,29 @@ def main():
 
     logging.info('Creating training set ...')
 
-    #implementing uniformish distribution of demo returns
+    # implementing uniformish distribution of demo returns
     min_return = train_rows.min()['return']
     max_return = (train_rows.max()['return'] - min_return) * args.max_return + min_return
 
-    rew_step  = (max_return - min_return)/ 4
+    rew_step = (max_return - min_return)/ 4
     dems = []
     seeds = []
     while len(dems) < args.num_dems:
 
         high = min_return + rew_step 
         while (high <= max_return) and (len(dems) < args.num_dems):
-            #crerate boundaries to pick the demos from, and filter demos accordingly
+            # crerate boundaries to pick the demos from, and filter demos accordingly
             low = high - rew_step
             filtered_dems = train_rows[(train_rows['return'] >= low) & (train_rows['return'] <= high)]
-            #make sure we have only unique demos
+            # make sure we have only unique demos
             new_seeds = filtered_dems[~filtered_dems['demo_id'].isin(seeds)]['demo_id']
-            #choose random demo and append
+            # choose random demo and append
             if len(new_seeds) > 0:
                 chosen_seed = np.random.choice(new_seeds, 1).item()
                 dems.append(get_demo(chosen_seed))
                 seeds.append(chosen_seed)
             high += rew_step
-    
+
     max_demo_return = max([demo['return'] for demo in dems])
     max_demo_length = max([demo['length'] for demo in dems])
 
@@ -425,25 +419,25 @@ def main():
     val_dems = dems[int(args.num_dems * 0.8) : ]
 
     train_set, _ = create_dataset(
-        dems = train_dems,
-        num_snippets = args.num_snippets,
-        min_snippet_length = args.min_snippet_length,
-        max_snippet_length = args.max_snippet_length,
-        verbose = False,
-        use_snippet_rewards = args.use_snippet_rewards,
-        use_clip_heuristic = args.use_clip_heuristic
+        dems=train_dems,
+        num_snippets=args.num_snippets,
+        min_snippet_length=args.min_snippet_length,
+        max_snippet_length=args.max_snippet_length,
+        verbose=False,
+        use_snippet_rewards=args.use_snippet_rewards,
+        use_clip_heuristic=args.use_clip_heuristic
         )
 
     logging.info('Creating validation set ...')
-    
+
     val_set, _ = create_dataset(
-        dems = val_dems,
-        num_snippets = 1000,
-        min_snippet_length = args.min_snippet_length,
-        max_snippet_length = args.max_snippet_length,
-        verbose = False,
-        use_snippet_rewards = args.use_snippet_rewards,
-        use_clip_heuristic = args.use_clip_heuristic
+        dems=val_dems,
+        num_snippets=1000,
+        min_snippet_length=args.min_snippet_length,
+        max_snippet_length=args.max_snippet_length,
+        verbose=False,
+        use_snippet_rewards=args.use_snippet_rewards,
+        use_clip_heuristic=args.use_clip_heuristic
         )
 
     # acquiring test demos for correlations and test accuracy
@@ -490,5 +484,5 @@ def main():
     store_model(state_dict_path, max_demo_return, max_demo_length, accs, args)
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()

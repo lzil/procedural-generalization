@@ -58,45 +58,6 @@ def get_id(path):
     rm_id = '.'.join(os.path.basename(path).split('.')[:-1])
     return rm_id
 
-
-# helper function for filtering rows in a csv
-def retain_row(row, constraints):
-    for k, v in constraints.items():
-        # respect maximum return constraints
-        if 'demo_max_return' in constraints:
-            if float(row['return']) > float(constraints['demo_max_return']):
-                return False
-        if 'demo_max_len' in constraints:
-            if float(row['length']) > float(constraints['demo_max_len']):
-                return False
-        if 'demo_min_len' in constraints:
-            if float(row['length']) < float(constraints['demo_max_len']):
-                return False
-        if 'rm_max_return' in constraints:
-            if float(row['max_return']) > float(constraints['rm_max_return']):
-                return False
-
-        # all other constraints
-        if row[k] != v:
-            return False
-    return True
-
-
-# helper function to get the rows in a csv that matter
-def filter_csv(path, constraints, max_rows=1000000):
-    with open(path) as master:
-        reader = csv.DictReader(master, delimiter=',')
-        rows = []
-        for row in reader:
-            if not retain_row(row, constraints):
-                continue
-            rows.append(row)
-            if len(rows) > max_rows:
-                break
-
-    return rows
-
-
 # helper function using pandas
 def filter_csv_pandas(infos, constraints):
     if 'env_name' in constraints:

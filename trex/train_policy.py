@@ -1,11 +1,8 @@
 import os
-import sys
 import glob
 
 import tensorflow as tf
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from baselines.ppo2 import ppo2
 
 from baselines.common.models import build_impala_cnn
@@ -59,7 +56,6 @@ def parse_config():
     parser.add_argument('--timesteps_per_proc', type=int, default=25_000_000) 
     parser.add_argument('--use_vf_clipping', action='store_true', default=True)
 
-
     args = parser.parse_args()
 
     if args.config is not None:
@@ -76,7 +72,6 @@ def main():
     test_worker_interval = args.test_worker_interval
 
     comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
 
     is_test_worker = False
 
@@ -84,7 +79,6 @@ def main():
         is_test_worker = comm.Get_rank() % test_worker_interval == (test_worker_interval - 1)
 
     mpi_rank_weight = 0 if is_test_worker else 1
-    num_levels = 0 if is_test_worker else args.num_levels
 
     log_comm = comm.Split(1 if is_test_worker else 0, 0)
     format_strs = ['csv', 'stdout'] if log_comm.Get_rank() == 0 else []
@@ -131,7 +125,7 @@ def main():
     conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
 
     logger.info("training")
-    
+
     model = ppo2.learn(
         env=venv,
         network=conv_fn,
@@ -153,13 +147,11 @@ def main():
         init_fn=None,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        load_path = args.load_path,
+        load_path=args.load_path,
     )
 
-    model.save(os.path.join(checkpoint_dir, 'final_model.parameters'))
-
+    model.save(os.path.join(run_dir, 'final_model.parameters'))
 
 
 if __name__ == '__main__':
     main()
-

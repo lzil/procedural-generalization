@@ -1,6 +1,5 @@
 import argparse
 import glob
-import sys
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
@@ -8,7 +7,7 @@ from train_reward import RewardNet
 import torch
 import pandas as pd
 
-from helpers.utils import get_id, filter_csv_pandas, get_demo
+from helpers.utils import filter_csv_pandas, get_demo
 
 mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=["mediumspringgreen", "salmon"]) 
 # mpl.rcParams["font.family"] = "helvetica"
@@ -16,17 +15,17 @@ mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=["mediumspringgreen", "salmon
 parser = argparse.ArgumentParser()
 parser.add_argument('--env_name', default='starpilot')
 parser.add_argument('--mode', default='easy')
-parser.add_argument('--sequential', type = int, default=0)
+parser.add_argument('--sequential', type=int, default=0)
 
 parser.add_argument('--demo_csv', default='demos/demo_infos.csv')
 parser.add_argument('--reward_csv', default='reward_models/rm_infos.csv')
-parser.add_argument('--rm_id', type =str, help='reward model id')
+parser.add_argument('--rm_id', type=str, help='reward model id')
 
 args = parser.parse_args()
 
 
 # find the reward model and load it
-path = glob.glob('./**/'+ args.rm_id + '.rm', recursive=True)[0]
+path = glob.glob('./**/' + args.rm_id + '.rm', recursive=True)[0]
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 net = RewardNet().to(device)
 net.load_state_dict(torch.load(path, map_location=torch.device(device)))
@@ -34,17 +33,19 @@ reward_function = lambda x: net.predict_batch_rewards(x)
 
 # find the relevant demos and filter them
 demo_infos = pd.read_csv(args.demo_csv)
-demo_infos = demo_infos[demo_infos['env_name']==args.env_name]
-demo_infos = demo_infos[demo_infos['mode']==args.mode]
-demo_infos = demo_infos[demo_infos['sequential'] == args.sequential]
-demo_infos = demo_infos[demo_infos['length'] > 100]
-demo_infos = demo_infos[demo_infos['set_name'] == 'test']
+constraints = {
+    'env_name': args.env_name,
+    'mode': args.mode,
+    'demo_min_len': 100,
+    'sequential': args.sequential,
+    'set_name': 'test'
+}
+demo_infos = filter_csv_pandas(demo_infos, constraints)
 
 # choose 12 of the demos at random to show
 dems = []
 for demo_id in np.random.choice(demo_infos['demo_id'], 12):
     dems.append((demo_id, get_demo(demo_id)))
-
 
 # get info about the reward model if csv is provided
 rm_info = None
@@ -56,12 +57,11 @@ if args.reward_csv is not None:
     elif rm_infos.shape[0] == 1:
         rm_info = rm_infos.iloc[0]
 
-
-fig, axs = plt.subplots(3,4,sharex=True, sharey=True, figsize=(12, 7))
+fig, axs = plt.subplots(3, 4, sharex=True, sharey=True, figsize=(12, 7))
 
 true_rews = dems[0][1]['rewards']
 pred_rews = reward_function(dems[0][1]['observations'])
-norm_const = np.sum(true_rews)/np.sum(pred_rews) 
+norm_const = np.sum(true_rews)/np.sum(pred_rews)
 
 for i, ax in enumerate(fig.axes):
     demo_id, demo = dems[i]
@@ -70,8 +70,8 @@ for i, ax in enumerate(fig.axes):
 
     # matplotlib formatting
     ax.set_title(demo_id)
-    ax.axvline(x=0, color='dimgray', alpha = 1)
-    ax.axhline(y=0, color='dimgray', alpha = 1)
+    ax.axvline(x=0, color='dimgray', alpha=1)
+    ax.axhline(y=0, color='dimgray', alpha=1)
     ax.grid(True, which='major', lw=1, color='lightgray', alpha=0.4)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -80,8 +80,8 @@ for i, ax in enumerate(fig.axes):
     ax.tick_params(axis='both', color='white')
 
     # plot cumulative rewards for demonstration
-    ax.plot(np.cumsum(true_rews), lw=2, label = 'true')
-    ax.plot(np.cumsum(pred_rews) * norm_const, lw=2, label = 'predicted')
+    ax.plot(np.cumsum(true_rews), lw=2, label='true')
+    ax.plot(np.cumsum(pred_rews) * norm_const, lw=2, label='predicted')
 
 fig.text(0.5, 0.04, 'timestep', ha='center', va='center')
 fig.text(0.06, 0.5, 'cumulative reward', ha='center', va='center', rotation='vertical')
