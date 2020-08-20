@@ -224,7 +224,7 @@ class RewardTrainer:
                 avg_reward = np.mean(np.array(reward_list))
                 avg_abs_reward = np.mean(np.array(abs_reward_list))
 
-                logging.info(f"n_samples: {(epoch+1)*self.args.epoch_size:6g} | loss: {epoch_loss:5.2f} | rewards: {avg_reward.item():5.2f}/{avg_abs_reward.item():.2f} | pc: {pearson:5.2f} | sc: {spearman:5.2f}")
+                logging.info(f"n_samples: {(epoch+1)*self.args.epoch_size:6g} | loss: {epoch_loss:5.2f} | rewards mean/mean_abs: {avg_reward.item():5.2f}/{avg_abs_reward.item():.2f} | pc: {pearson:5.2f} | sc: {spearman:5.2f}")
                 logging.info(f'   | train_acc : {train_acc:6.4f} | val_acc : {val_acc:6.4f} | test_acc : {test_acc:6.4f}')
                 logging.info(f'   | train_loss: {train_loss:6.4f} | val_loss: {val_loss:6.4f} | test_loss: {test_loss:6.4f}')
 
@@ -315,7 +315,7 @@ def parse_config():
 
     parser.add_argument('--lr', type=float, default=5e-5, help='reward model learning rate')
     parser.add_argument('--lam_l1', type=float, default=0.001, help='l1 penalization of abs value of output')
-    parser.add_argument('--weight_decay', type=float, default=0.005, help='weight decay of updates')
+    parser.add_argument('--weight_decay', type=float, default=0.01, help='weight decay of updates')
     parser.add_argument('--output_abs', action='store_true', help='absolute value the output of reward model')
     parser.add_argument('--use_snippet_rewards', action='store_true', help='use true rewards instead of demonstration ones')
     parser.add_argument('--use_clip_heuristic', type = bool, default = True, help='always pick later part of a better trajectory when generating clips')

@@ -22,6 +22,7 @@ parser.add_argument('--demo_csv', default=None)
 parser.add_argument('--demo_folder', default=None)
 parser.add_argument('--save_name', default=None)
 parser.add_argument('--patience', default=None)
+parser.add_argument('--lam_l1', default=None)
 
 parser.add_argument('--config', default=None, type=str)
 
@@ -46,23 +47,28 @@ for (seed, env_name, mode, num_dems, max_return, sequential, weight_decay) in \
     command.append(f'--sequential={sequential}')
     command.append(f'--weight_decay={weight_decay}')
 
-    if args.config is not None:
-        command.append(f'--config={args.config}')
+    # if args.config is not None:
+    #     command.append(f'--config={args.config}')
 
-    if args.max_num_epochs is not None:
-        command.append(f'--max_num_epochs={args.max_num_epochs}')
-    if args.patience is not None:
-        command.append(f'--patience={args.patience}')
-    if args.epoch_size is not None:
-        command.append(f'--epoch_size={args.epoch_size}')
-    # note: i'm using this because i have separate demo folders for each env
-    # thus this won't work well if i'm using multiple environments
-    if args.demo_csv is not None:
-        command.append(f'--demo_csv={args.demo_csv}')
-    if args.demo_folder is not None:
-        command.append(f'--demo_folder={args.demo_folder}')
-    if args.save_name is not None:
-        command.append(f'--save_name={args.save_name}')
+    # if args.max_num_epochs:
+    #     command.append(f'--max_num_epochs={args.max_num_epochs}')
+    # if args.patience:
+    #     command.append(f'--patience={args.patience}')
+    # if args.epoch_size:
+    #     command.append(f'--epoch_size={args.epoch_size}')
+    # if args.demo_csv:
+    #     command.append(f'--demo_csv={args.demo_csv}')
+    # if args.demo_folder:
+    #     command.append(f'--demo_folder={args.demo_folder}')
+    # if args.save_name:
+    #     command.append(f'--save_name={args.save_name}')
+    # if args.lam_l1:
+    #     command.append(f'--lam_l1={args.lam_l1}')
+    dict_args = vars(args)
+    for key in ['config', 'max_num_epochs', 'patience', 'epoch_size',
+                'demo_csv', 'save_name', 'lam_l1']:
+        if dict_args[key]:
+            command.append(f'--{key}={dict_args[key]}')
 
     command = ' '.join(command)
 

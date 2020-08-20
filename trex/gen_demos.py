@@ -30,7 +30,8 @@ parser.add_argument('--num_dems', default=100, type=int, help="number of demonst
 parser.add_argument('--max_ep_len', default=1000, type=int, help="Max length of the demo")
 parser.add_argument('--models_dir', type=str)
 parser.add_argument('--sequential', type=int, default=0)
-parser.add_argument('--log_dir', type=str, default='demos')
+parser.add_argument('--use_backgrounds', action='store_false')
+parser.add_argument('--log_dir', type=str, default='nobg_demos')
 parser.add_argument('--name', type=str, default='NONAME', help="naming for this batch of generated trajectories")
 
 
@@ -44,7 +45,8 @@ procgen_fn_true = lambda seed: ProcgenEnv(
     num_levels=1,
     start_level=seed,
     distribution_mode=args.distribution_mode,
-    use_sequential_levels = args.sequential
+    use_sequential_levels=args.sequential,
+    use_backgrounds=args.use_backgrounds
 )
 conv_fn = lambda x: build_impala_cnn(x, depths=[16, 32, 32], emb_size=256)
 
