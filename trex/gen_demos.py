@@ -31,8 +31,8 @@ parser.add_argument('--max_ep_len', default=1000, type=int, help="Max length of 
 parser.add_argument('--models_dir', type=str)
 parser.add_argument('--sequential', type=int, default=0)
 parser.add_argument('--use_backgrounds', action='store_false')
-parser.add_argument('--log_dir', type=str, default='nobg_demos')
-parser.add_argument('--name', type=str, default='NONAME', help="naming for this batch of generated trajectories")
+parser.add_argument('--log_dir', type=str, default='demos')
+parser.add_argument('--name', type=str, default=None, help="naming for this batch of generated trajectories")
 
 
 args = parser.parse_args()
@@ -72,7 +72,7 @@ else:
 os.makedirs(demo_dir, exist_ok=True)
 file_exists = os.path.exists(info_path)
 
-with open (info_path, 'a') as csvfile:
+with open(info_path, 'a') as csvfile:
     headers = ['demo_id', 'env_name', 'mode', 'length', 'return', 'set_name', 'sequential']
     writer = csv.DictWriter(csvfile, fieldnames=headers, extrasaction='ignore')
 
@@ -97,7 +97,7 @@ with open (info_path, 'a') as csvfile:
         venv_fn = lambda: VecExtractDictObs(procgen_fn_true(seed), "rgb")
         model_path = np.random.choice(model_files)
         init_policy.load(model_path)
-        runner = ProcgenRunner(venv_fn, init_policy, nsteps = args.max_ep_len)
+        runner = ProcgenRunner(venv_fn, init_policy, nsteps=args.max_ep_len)
 
         demo = runner.collect_episodes(1)[0]
         demo['env_name'] = args.env_name

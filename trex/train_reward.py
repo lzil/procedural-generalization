@@ -318,7 +318,7 @@ def parse_config():
     parser.add_argument('--weight_decay', type=float, default=0.01, help='weight decay of updates')
     parser.add_argument('--output_abs', action='store_true', help='absolute value the output of reward model')
     parser.add_argument('--use_snippet_rewards', action='store_true', help='use true rewards instead of demonstration ones')
-    parser.add_argument('--use_clip_heuristic', type = bool, default = True, help='always pick later part of a better trajectory when generating clips')
+    parser.add_argument('--use_clip_heuristic', type=bool, default=True, help='always pick later part of a better trajectory when generating clips')
 
     parser.add_argument('--log_dir', default='LOGS/RM_LOGS', help='Training logs directory')
 

@@ -1,5 +1,6 @@
 import os
 import glob
+import numpy as np
 
 import tensorflow as tf
 import torch
@@ -35,8 +36,11 @@ def parse_config():
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--load_path', type=str, default=None)
     parser.add_argument('--log_dir', type=str, default='LOGS/POLICY_LOGS')
+    parser.add_argument('--use_sequential_levels', type=bool, default=False)
     parser.add_argument('--log_name', type=str, default='')
     parser.add_argument('--rm_id', default='', type=str, help="reward model id, e.g. 109_8714")
+    parser.add_argument('--use_sigmoid', action='store_true', default=False,
+                        help='whether to pass reward model output though sigmoid')
 
     # logs every num_envs * nsteps
     parser.add_argument('--log_interval', type=int, default=5)
@@ -67,7 +71,7 @@ def parse_config():
 def main():
 
     args = parse_config()
-    run_dir = log_this(args, args.log_dir, args.rm_id)
+    run_dir = log_this(args, args.log_dir, args.log_name + '_' + args.env_name + '_' + args.rm_id)
 
     test_worker_interval = args.test_worker_interval
 
@@ -91,7 +95,8 @@ def main():
         env_name=args.env_name,
         num_levels=args.num_levels,
         start_level=args.start_level,
-        distribution_mode=args.distribution_mode
+        distribution_mode=args.distribution_mode,
+        use_sequential_levels=args.use_sequential_levels
     )
     venv = VecExtractDictObs(venv, "rgb")
     venv = VecMonitor(venv=venv, filename=None, keep_buf=100)
@@ -104,10 +109,19 @@ def main():
         net.load_state_dict(torch.load(rm_path, map_location=torch.device(device)))
 
         # use batch reward prediction function instead of the ground truth reward function
-        rew_func = lambda x: net.predict_batch_rewards(x)
+        # pass though sigmoid if needed
+        if args.use_sigmoid:
+            rew_func = lambda x: 1/(1 + np.exp(-net.predict_batch_rewards(x)))
+        else:
+            rew_func = lambda x: net.predict_batch_rewards(x)
+
+        ## Uncomment the line below to train a live-long agent
+        # rew_func = lambda x: x.shape[0] * [1]
+
+        
         venv = ProxyRewardWrapper(venv, rew_func)
     else:
-        # true environment rewards will be used
+        # true environment rewards will be use
         pass
 
     venv = VecNormalize(venv=venv, ob=False, use_tf=False)

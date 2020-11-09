@@ -58,6 +58,7 @@ def get_id(path):
     rm_id = '.'.join(os.path.basename(path).split('.')[:-1])
     return rm_id
 
+
 # helper function using pandas
 def filter_csv_pandas(infos, constraints):
     if 'env_name' in constraints:
@@ -91,6 +92,7 @@ def timeitt(method):
 
 def store_model(state_dict_path, max_return, max_length, accs, args):
 
+    os.makedirs(args.save_dir, exist_ok=True)
     csv_name = 'rm_infos.csv' if args.save_name is None else f'rm_infos_{args.save_name}.csv'
     info_path = os.path.join(args.save_dir, csv_name)
 

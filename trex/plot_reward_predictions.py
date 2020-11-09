@@ -10,7 +10,6 @@ import pandas as pd
 from helpers.utils import filter_csv_pandas, get_demo
 
 mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=["mediumspringgreen", "salmon"]) 
-# mpl.rcParams["font.family"] = "helvetica"
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--env_name', default='starpilot')
@@ -57,11 +56,11 @@ if args.reward_csv is not None:
     elif rm_infos.shape[0] == 1:
         rm_info = rm_infos.iloc[0]
 
-fig, axs = plt.subplots(3, 4, sharex=True, sharey=True, figsize=(12, 7))
+fig, axs = plt.subplots(2, 3, sharex=True, sharey=True, figsize=(12, 7))
 
 true_rews = dems[0][1]['rewards']
 pred_rews = reward_function(dems[0][1]['observations'])
-norm_const = np.sum(true_rews)/np.sum(pred_rews)
+norm_const = abs(np.sum(true_rews)/np.sum(pred_rews))
 
 for i, ax in enumerate(fig.axes):
     demo_id, demo = dems[i]
@@ -83,11 +82,11 @@ for i, ax in enumerate(fig.axes):
     ax.plot(np.cumsum(true_rews), lw=2, label='true')
     ax.plot(np.cumsum(pred_rews) * norm_const, lw=2, label='predicted')
 
-fig.text(0.5, 0.04, 'timestep', ha='center', va='center')
-fig.text(0.06, 0.5, 'cumulative reward', ha='center', va='center', rotation='vertical')
+fig.text(0.5, 0.04, 'timestep', ha='center', va='center', fontsize=22)
+fig.text(0.06, 0.5, 'cumulative reward', ha='center', va='center', rotation='vertical', fontsize=22)
 
 handles, labels = ax.get_legend_handles_labels()
-fig.legend(handles, labels, loc='center right')
+fig.legend(handles, labels, loc='upper left', prop={'size': 20})
 if rm_info is not None:
     fig.suptitle(f'reward model {args.rm_id}: {args.env_name}, {args.mode}, {"seq" if args.sequential else "non-seq"}; {rm_info.num_dems} dems', size='xx-large', weight='bold')
 else:
