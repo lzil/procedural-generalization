@@ -1,6 +1,6 @@
 # Assessing Generalization in Reward Learning
 
-To read the blog post, [click here](https://towardsdatascience.com/assessing-generalization-in-reward-learning-intro-and-background-da6c99d9e48).
+To read the blog post writeup, [click here](https://towardsdatascience.com/assessing-generalization-in-reward-learning-intro-and-background-da6c99d9e48).
 
 
 ## Intro
