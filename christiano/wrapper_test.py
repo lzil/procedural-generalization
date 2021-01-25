@@ -1,4 +1,4 @@
-from env_wrapper import gym_procgen_continuous
+from env_wrapper import Gym_procgen_continuous
 from procgen import ProcgenGym3Env, ProcgenEnv
 from stable_baselines.common import make_vec_env
 import numpy as np
@@ -9,7 +9,7 @@ tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 def no_death_test():
-    env = gym_procgen_continuous(env_name = 'fruitbot')
+    env = Gym_procgen_continuous(env_name = 'fruitbot', max_steps = 3000)
 
     dones = []
     for i in range(2000): 
@@ -21,7 +21,7 @@ def no_death_test():
 
 
 def ep_ends_test():
-    env = gym_procgen_continuous(env_name = 'fruitbot', max_steps = 1000)
+    env = Gym_procgen_continuous(env_name = 'fruitbot', max_steps = 1000)
 
     dones = []
     for i in range(1001): 
@@ -39,7 +39,7 @@ def baseline_test():
     from stable_baselines.common import env_checker
 
 
-    gym_env_fn = lambda: gym_procgen_continuous(env_name = 'fruitbot')
+    gym_env_fn = lambda: Gym_procgen_continuous(env_name = 'fruitbot')
 
     env_checker.check_env(gym_env_fn())
     print('Success! : environment is compatible with stable baselines')
@@ -49,19 +49,20 @@ def baseline_test():
     
 
     model = PPO2(MlpPolicy, env, verbose=1)
-    model.learn(total_timesteps=10000)
+    model.learn(total_timesteps=100000)
 
     print('Success! : stable baselines trained on the vectorized environment')
 
 
 def ProxyRewardWrapper_test():
-    from env_wrapper import ProxyRewardWrapper
-    env = make_vec_env('CartPole-v1', n_envs=4)
+    from env_wrapper import Vec_reward_wrapper
+    env = make_vec_env(lambda: Gym_procgen_continuous(env_name = 'fruitbot'), n_envs=4)
+
     reward_model = lambda x: np.zeros(4)
-    new_env = ProxyRewardWrapper(env, reward_model)
+    new_env = Vec_reward_wrapper(env, reward_model)
 
     new_env.reset()
-    for i in range(1001): 
+    for i in range(11): 
         ob, rew, done, info = new_env.step(4*[new_env.action_space.sample()]) 
         assert((rew == np.zeros(4)).all())
     

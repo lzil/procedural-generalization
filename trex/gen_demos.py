@@ -1,40 +1,38 @@
 import numpy as np
-import torch
 import pickle
-import pandas as pd 
 import csv
 import os
-import time
-import random
 import tensorflow as tf
-tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 
 from procgen import ProcgenEnv
 from baselines.common.vec_env import VecExtractDictObs
 from baselines.common.models import build_impala_cnn
 
-import pdb
 import argparse
 
-from helpers.trajectory_collection import ProcgenRunner, generate_procgen_dems
+from helpers.trajectory_collection import ProcgenRunner
 
-import helpers.baselines_ppo2 as ppo2
+from baselines.ppo2 import ppo2
+
+tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--env_name', type=str, default='starpilot')
 parser.add_argument('--distribution_mode', type=str, default='easy',
-    choices=["easy", "hard", "exploration", "memory", "extreme"])
-parser.add_argument('--test_set', action = 'store_true')
+                    choices=["easy", "hard", "exploration", "memory", "extreme"])
+parser.add_argument('--test_set', action='store_true')
 parser.add_argument('--start_level', type=int, default=0)
 parser.add_argument('--num_dems', default=100, type=int, help="number of demonstrations to use")
-parser.add_argument('--max_ep_len', default = 1000, type = int, help = "Max length of the demo")
-parser.add_argument('--models_dir', type = str)
-parser.add_argument('--sequential', type = int, default=0)
-parser.add_argument('--log_dir', type = str, default = 'trex/demos')
-parser.add_argument('--name', type = str, default = None)
+parser.add_argument('--max_ep_len', default=1000, type=int, help="Max length of the demo")
+parser.add_argument('--models_dir', type=str)
+parser.add_argument('--sequential', type=int, default=0)
+parser.add_argument('--use_backgrounds', action='store_false')
+parser.add_argument('--log_dir', type=str, default='demos')
+parser.add_argument('--name', type=str, default=None, help="naming for this batch of generated trajectories")
 
 
 args = parser.parse_args()
@@ -47,9 +45,10 @@ procgen_fn_true = lambda seed: ProcgenEnv(
     num_levels=1,
     start_level=seed,
     distribution_mode=args.distribution_mode,
-    use_sequential_levels = args.sequential
+    use_sequential_levels=args.sequential,
+    use_backgrounds=args.use_backgrounds
 )
-conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
+conv_fn = lambda x: build_impala_cnn(x, depths=[16, 32, 32], emb_size=256)
 
 # check all the policy models in the folder to pull dems from
 model_files = [os.path.join(args.models_dir, f) for f in os.listdir(args.models_dir)]
@@ -73,9 +72,9 @@ else:
 os.makedirs(demo_dir, exist_ok=True)
 file_exists = os.path.exists(info_path)
 
-with open (info_path, 'a') as csvfile:
-    headers = ['demo_id','env_name','mode','length', 'return','set_name', 'sequential']
-    writer = csv.DictWriter(csvfile, fieldnames=headers, extrasaction = 'ignore')
+with open(info_path, 'a') as csvfile:
+    headers = ['demo_id', 'env_name', 'mode', 'length', 'return', 'set_name', 'sequential']
+    writer = csv.DictWriter(csvfile, fieldnames=headers, extrasaction='ignore')
 
     if not file_exists:
         writer.writeheader()
@@ -98,7 +97,7 @@ with open (info_path, 'a') as csvfile:
         venv_fn = lambda: VecExtractDictObs(procgen_fn_true(seed), "rgb")
         model_path = np.random.choice(model_files)
         init_policy.load(model_path)
-        runner = ProcgenRunner(venv_fn, init_policy, nsteps = args.max_ep_len)
+        runner = ProcgenRunner(venv_fn, init_policy, nsteps=args.max_ep_len)
 
         demo = runner.collect_episodes(1)[0]
         demo['env_name'] = args.env_name

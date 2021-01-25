@@ -1,93 +1,106 @@
 # procedural-generalization
 
-testing the generalization properties of the openai procgen benchmark
+Testing the generalization properties of [T-REX](https://github.com/hiwonjoon/ICML2019-TREX/blob/master/atari/LearnAtariReward.py) algorithm on [Procgen](https://github.com/openai/procgen) suite of environments
 
+The code is havily adapted from the repositories above
 
-## setup
+## Setup
 
-setup train-procgen environments using lines below
+To setup the environment use the following commands:
 
 ```
-git clone https://github.com/openai/train-procgen.git
-conda env update --name train-procgen --file train-procgen/environment.yml
-conda activate train-procgen
+git clone https://github.com/lzil/procedural-generalization.git
+conda env update --name trex-procgen --file procedural-generalization/trex/environment.yml
+conda activate trex-procgen
 pip install https://github.com/openai/baselines/archive/9ee399f5b20cd70ac0a871927a6cf043b478193f.zip  
-pip install pyyaml
-pip install -e train-procgen
 ```
 
+Then download the pre-generated demo's [here](https://drive.google.com/drive/folders/1DjGpKnXip6WBXuHzajt1FaiWGU7s4338?usp=sharing) and put into `trex/demos` folder 
+
+To generate fresh demos yourself, you'll need to download the [expert policies](https://drive.google.com/drive/folders/1-LnTGdBjuIIBPo7BIu1uwB7K9qlAMvJH?usp=sharing) and put them into `trex/experts` folder. Then execute e.g.  
+```python gen_demos.py  --models_dir experts/fruitbot/easy/checkpoints --env_name fruitbot --name fruitbot_sequential --num_dems 200```  
+
+You can train your own experts if you so wish using e.g.  
+`python train_policy.py --env_name starpilot --distribution_mode easy`
+
+
+## Training reward models with T-REX algorithm
+
+
+
+Now the `demos` folder should contain the sufficient amount of demos for the envirionment in question. The provided demos have different attained returns (the experts purposefully chosen to have varied skill levels)
+
+The algorithm will create the training data by selecting the requested number of demos from the available ones,
+then picking the pairs of clips coming from different demos and assigning preference in each clip based on the return of the demo that it came from.
+Having this training set, the we train the reward model that would fit the created data
+
+You can check the detailed desctiption of the algorithm in the [paper](https://arxiv.org/abs/1904.06387) by Brown et al.
+
+
+To train reward for the `fruitbot` given 200 demos run:  
+`python train_reward.py --env_name fruitbot --num_dems 200`
+
+Many algorithm hyperparameters could be specified from the command line   
+Check `python train_reward.py --help` for the full list
+
+To run several experiments at a time with different hyperparameters use `run_experiments.py`. For example:  
+`python run_experiments.py --env_name starpilot fruitbot coinrun --num_dems 30 100 200 500 1000 --num_seeds 5 --save_name NEW_RUN`  
+will run 3(envirionments) x 5(different # of demos) x 5(random seeds) = 75 experiments and save the details of the reward models to `reward_models/rm_infos_NEW_RUN.csv` file
 
 ---
 
-## training a baseline agent
-
-Simply run `train.py` in `baseline_agent/` with appropriate parameters.
-
-Parameters can be entered with a config file with a `-c` flag.
-Example config files in `baseline_agent/configs/`.
-
-The default parameters are a good place to start; check out the `train-procgen` repo for more details.
-
-Sample run:
-`python train.py -c test.yaml`
-
-
----
-
-## training with t-rex
-
-T-REX consists of 4 main steps.
-
-1. train an agent with PPO to do well on an environment, in general.
-    - any existing PPO trainer will do, for instance the one in `baseline_agent/train.py`
-    - save checkpoints of these models into some directory. example: `chaser_model_dir`
-2. sample trajectories from those trained models, from a minimal number of levels, and sort according to rewards obtained
-    - done in `reward_model.py`
-    - demonstrations/trajectories generated in `generate_procgen_demonstrations`
-3. use those trajectories to train a reward model
-    - done in `reward_model.py`
-    - first create the training data `create_training_data`, then train a `RewardNet` with a `RewardTrainer`
-4. train another agent with that reward model
-    - done in `train_policy.py`
-    - load the reward model saved from step 3 to train an actual policy
-
-
-TODO: sample runs, config files
-
----
-
-## calculating and plotting correlations
+## Plotting the reward model correlations
 
 We can evaluate the quality of a given model with a simple metric: the correlation between the real return of a trajectory and the predicted return from the reward model.
 
-The code for evaluating the correlation is in `reward_metric.py`, and the wrapper code that does all this in an organized fashion is in `plot_correlations.py`.
+The [spearman](https://en.wikipedia.org/wiki/Spearman%27s_rank_correlation_coefficient) and [pearson](https://en.wikipedia.org/wiki/Pearson_correlation_coefficient) correlations of the learned reward model with the true reward are calculated at the end of training and saved in the .csv file
 
-Simply run `plot_correlations.py` with the right parameters in the main function.
-Initially, set 'corrs_from_file' to False; after each run that is run this way, the program will run `calc_correlations` (which take time to run) will be saved in a JSON file.
-Afterwards, the program will attempt to plot the correlations with `plot_correlations`; if 'corrs_from_file' is True, then the cached correlations file will be used.
+Simply run  e.g.:  
+`python plot_correlations.py --rm_csv_path reward_models/rm_infos_NEW_RUN.csv --env_name fruitbot` 
 
+The output may look like this:
+
+![Starpilot Correlations](figures/starpilot_corrs.png)
+
+
+Baselines are computed by measuring correlation with the reward model that assings +1 reward to every state
+
+### Visualizing the reward model predictions
+
+To plot the predicted reward v.s. the true reward run e.g.:  
+`python plot_reward_predictions.py --env_name starpilot --reward_model 100_1999`
+
+This will pick 12 random demos, and produce plots of true cumulative reward vs predicted cumulative reward, which can be very useful to interpret the learned reward model
+The rewards are normalized to have the same scale
+
+Sample plot:  
+![Starpilot_predictions](figures/reward_predicitons.png)
 
 ---
 
-## recording and watching videos
 
-### policy
+## Training the policy with the learned reward
 
-Tesing a trained agent saved in `policy.parameters` can be done with e.g.:  
-`python test_policy.py --load_path policy.parameters --env_name Name`
+Just use `train_policy.py` e.g.:  
+`python train_policy.py --env_name starpilot --rm_id 100_1999`
+
+
+To test a trained policy run e.g.:  
+`python test_policy.py --load_path experts/coinrun/easy/checkpoints/00090 --env_name coinrun`
 
 You can also record a video of the trained agent with e.g.:  
-`python rec_video.py --load_path policy.parameters --env_name Name`
+`python visualize_policy.py --load_path experts/coinrun/easy/checkpoints/00090 --env_name coinrun`
 
 Additional argumets are available
 
+### Visualizing demos
 
-### demonstration
+To visualize one of the stored demos run:  
+`python visualize_demo.py 1_203_931_872`  
+and it will appear in `Videos/demo_1_203_931_872.mp4`.
 
-Produce a demonstration file with
-`python visualize_demo <demo_path>`
-and it will appear in `videos/demo_<demo_id>.mp4`.
 
-Slight problem: when you run it, it prints a lot of stuff.
-I haven't been able to figure out how to get rid of it - it may be a Mac thing.
-But the produced video is unaffected.
+
+
+
+

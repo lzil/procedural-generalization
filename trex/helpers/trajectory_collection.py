@@ -16,7 +16,7 @@ class ProcgenRunner:
         self.env_fn = env_fn
         self.model = model
         self.states = model.initial_state
-        self.nsteps = nsteps #maximum length of trajectory
+        self.nsteps = nsteps # maximum length of trajectory
 
     def run(self):
         venv = self.env_fn()
@@ -47,12 +47,12 @@ class ProcgenRunner:
                 if maybeepinfo: epinfos.append(maybeepinfo)
             mb_rewards.append(rewards)
 
-            #stop stepping as soon as each environment in the 
-            #batch have completed at least one episode
+            # stop stepping as soon as each environment in the
+            # batch have completed at least one episode
             if all(done_once):
                 break
 
-        #batch of steps to batch of rollouts
+        # batch of steps to batch of rollouts
         mb_obs = np.asarray(mb_obs, dtype=self.obs.dtype)
         mb_rewards = np.asarray(mb_rewards, dtype=np.float32)
         mb_actions = np.asarray(mb_actions)
@@ -60,12 +60,13 @@ class ProcgenRunner:
         mb_neglogpacs = np.asarray(mb_neglogpacs, dtype=np.float32)
         mb_dones = np.asarray(mb_dones, dtype=np.bool)
 
-        #shape of each is [nsteps, nenv, ... ]
+        # shape of each is [nsteps, nenv, ... ]
         return mb_obs, mb_rewards, mb_dones, mb_actions, mb_values, mb_neglogpacs, mb_states, epinfos
 
     def collect_episodes(self, n_episodes):
-        """Collects enogh episodes using self.run and returns the batch of episodes of specified size
-        """  
+        """Collects enogh episodes using self.run and returns
+        the batch of episodes of specified size
+        """
         batch = []
 
         while len(batch) < n_episodes:
@@ -88,7 +89,6 @@ class ProcgenRunner:
 
 
 def generate_procgen_dems(env_fn, model, model_dir, max_ep_len, num_dems):
-    
     """
     loop through models in model_dir and sample demonstrations
     until num_dems demonstrations is collected
@@ -99,9 +99,7 @@ def generate_procgen_dems(env_fn, model, model_dir, max_ep_len, num_dems):
     for model_file in np.random.choice(model_files, num_dems):
         model.load(model_file)
         collector = ProcgenRunner(env_fn, model, max_ep_len)
-        dems.extend(collector.collect_episodes(1)) #collects one episode with current model
-    
+        dems.extend(collector.collect_episodes(1))
+    # collects one episode with current model
+
     return dems
-        
-
-

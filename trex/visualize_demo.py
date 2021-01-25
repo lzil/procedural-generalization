@@ -1,29 +1,19 @@
-import numpy as np
-import pickle
 import argparse
-import sys
 import os
 
 import cv2
 
-from helpers.utils import get_id
-from train_reward import get_file
+from helpers.utils import get_demo
 
-vid_folder = 'videos'
+vid_folder = 'Videos'
 os.makedirs(vid_folder, exist_ok=True)
-
-# # send all the output from cv2 to a log file
-# os.makedirs('logs', exist_ok=True)
-# f = open('logs/log_visualize_demo.log', 'a')
-# sys.stdout = f
-# sys.stderr = f
 
 # only argument is demo path
 parser = argparse.ArgumentParser()
 parser.add_argument('demo_id')
 args = parser.parse_args()
 
-demo = get_file(args.demo_id + '.demo')
+demo = get_demo(args.demo_id)
 
 demo_id = demo['demo_id']
 observations = demo['observations']
